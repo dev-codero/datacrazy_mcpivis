@@ -59,3 +59,27 @@ MCP (Model Context Protocol) server in TypeScript that exposes all 63 endpoints 
 | loss-reasons.ts | 5 | CRUD loss reasons |
 | attendants.ts | 4 | CRM + Multi attendants |
 | instances.ts | 2 | Connection instances |
+
+## CRM Migration (src/migrate/) — planned
+One-time DataCrazy→DataCrazy migration script (`npm run migrate`), planned in
+`docs/superpowers/`. Reuses `DataCrazyClient` instantiated twice (source + dest) from
+`SOURCE_API_TOKEN` / `DEST_API_TOKEN` in a gitignored `.env`, loaded via `tsx --env-file`.
+Three sequential phases: **config** (match-or-create tags/lists/products/loss-reasons;
+match-by-name only for pipelines/stages/attendants), **leads** (+ notes/attachments),
+**businesses** (lead/stage/attendant/status). ID remapping persisted to
+`.migration/idmap.json` (resumable checkpoint); `externalId` on businesses stores the
+source id. Pure logic (matching, id-map, payload builders) is built test-first with
+`node:test`; IO verified via `--dry-run`.
+
+- Spec: `docs/superpowers/specs/2026-05-29-datacrazy-crm-migration-design.md`
+- Plan: `docs/superpowers/plans/2026-05-29-datacrazy-crm-migration.md`
+
+### Key API constraints (verified against the OpenAPI spec)
+- **Pipelines, stages, attendants are read-only** (GET only) → cannot be created via API;
+  must already exist in the destination (matched by name/email).
+- **Business value & products have no write path.** `CreateBusinessesDto`/`UpdateBusinessesDto`
+  accept only `leadId`, `stageId`, `attendantId`, `externalId`. Migrating monetary value/items
+  is deferred to live API exploration (see the `applyBusinessValue` stub).
+- `POST /leads` and `POST /tags` return `201` with no documented body → the created id is
+  resolved by re-fetching/searching by a known field.
+- List responses are `{ count, data: [] }`; paginate via `skip`/`take`.
