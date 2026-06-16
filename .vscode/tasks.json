@@ -1,0 +1,75 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Send Orcamento + Finalizado para n8n (Finalizado+Orcamento, todas)",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --reset",
+			"args": [
+				"env",
+				"-u",
+				"DATACRAZY_API_TOKEN",
+				"npx",
+				"tsx",
+				"scripts/sync-batch.ts",
+				"--send",
+				"--reset"
+			],
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento+Finalizado para n8n",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --reset > /tmp/sync-bg.log 2>&1",
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento devagar (batch=5)",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=cfc192bd-9a14-4a68-8d07-d74a83f7199f --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento devagar",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=cfc192bd-9a14-4a68-8d07-d74a83f7199f --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento tudo (sem skip telefone)",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=cfc192bd-9a14-4a68-8d07-d74a83f7199f --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Finalizado tudo (sem skip telefone)",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=33b14c90-4d8a-45c8-b98a-12770ead38b6 --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento+Finalizado com strings vazias",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --reset --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Finalizado → qualificado",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=33b14c90-4d8a-45c8-b98a-12770ead38b6 --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Orcamento (limpo)",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=cfc192bd-9a14-4a68-8d07-d74a83f7199f --batch=5 --pause=10000",
+			"isBackground": true
+		},
+		{
+			"label": "Send Finalizado → convertido",
+			"type": "shell",
+			"command": "env -u DATACRAZY_API_TOKEN npx tsx scripts/sync-batch.ts --send --stage=33b14c90-4d8a-45c8-b98a-12770ead38b6 --batch=5 --pause=10000",
+			"isBackground": true
+		}
+	]
+}

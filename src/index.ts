@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+// Carrega .env quando existir (não sobrescreve vars já definidas no shell)
+import "dotenv/config";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { DataCrazyClient } from "./client.js";
+import { McpClient } from "./mcp-client.js";
 
 // Tool modules
 import { registerLeadsTools } from "./tools/leads.js";
@@ -23,9 +27,11 @@ import { registerProductsTools } from "./tools/products.js";
 import { registerLossReasonsTools } from "./tools/loss-reasons.js";
 import { registerAttendantsTools } from "./tools/attendants.js";
 import { registerInstancesTools } from "./tools/instances.js";
+import { registerN8nSyncTools } from "./tools/n8n-sync.js";
 
 const config = loadConfig();
 const client = new DataCrazyClient(config);
+const mcp = new McpClient(config);
 
 const server = new McpServer({
   name: "mcp-datacrazy",
@@ -51,6 +57,7 @@ registerProductsTools(server, client, config);
 registerLossReasonsTools(server, client, config);
 registerAttendantsTools(server, client, config);
 registerInstancesTools(server, client, config);
+registerN8nSyncTools(server, mcp, config);
 
 // Start server
 const transport = new StdioServerTransport();
