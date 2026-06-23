@@ -1,7 +1,9 @@
 import { config as loadDotenv } from "dotenv";
 
 // Carrega .env se existir. Não sobrescreve vars já definidas no shell.
-loadDotenv();
+// `quiet: true` é OBRIGATÓRIO: sem isso o dotenv imprime um banner no stdout,
+// que num servidor MCP stdio corrompe o stream JSON-RPC ("Unexpected token '◇'").
+loadDotenv({ quiet: true });
 
 export interface Config {
   apiToken: string;

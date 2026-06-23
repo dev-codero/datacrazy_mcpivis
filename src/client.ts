@@ -6,6 +6,7 @@ export class DataCrazyClient {
   private get headers(): Record<string, string> {
     return {
       "access-token": this.config.apiToken,
+      Authorization: `Bearer ${this.config.apiToken}`,
       "Content-Type": "application/json",
     };
   }

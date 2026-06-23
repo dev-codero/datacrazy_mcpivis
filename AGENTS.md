@@ -96,7 +96,7 @@ Não há script de teste formal no `package.json` neste momento. Não finja que 
 
 Existem dois clientes internos:
 
-- `DataCrazyClient` (`src/client.ts`): chama REST legado em `DATACRAZY_API_URL` usando header `access-token`.
+- `DataCrazyClient` (`src/client.ts`): chama REST legado em `DATACRAZY_API_URL` usando `access-token` e `Authorization: Bearer` para compatibilidade com tokens antigos e tokens novos `dc_...`.
 - `McpClient` (`src/mcp-client.ts`): chama MCP JSON-RPC oficial em `DATACRAZY_MCP_URL` usando header de autorização Bearer e aceita SSE.
 
 Escolha conscientemente qual usar. Não misturar por tentativa/erro sem documentar.

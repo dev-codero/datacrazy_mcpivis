@@ -2,3 +2,10 @@ node_modules/
 dist/
 .env
 *.local
+.DS_Store
+
+# Dados locais de importação/exportação — não commitar planilhas reais nem relatórios com dados de CRM
+input/
+reports/
+data/
+tmp/

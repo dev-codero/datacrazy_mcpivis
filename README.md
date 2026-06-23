@@ -128,11 +128,14 @@ https://api.g1.datacrazy.io
 
 Usada por `src/client.ts`.
 
-Header usado:
+Headers usados pelo cliente local:
 
 ```text
 access-token: <DATACRAZY_API_TOKEN>
+Authorization: Bearer <DATACRAZY_API_TOKEN>
 ```
+
+Observação: tokens novos com prefixo `dc_` foram validados na REST usando `Authorization: Bearer`. O cliente local envia os dois headers para manter compatibilidade com tokens/fluxos antigos.
 
 ### n8n webhook
 
@@ -306,6 +309,58 @@ npx tsx scripts/test-sync.ts
 ```
 
 Regra: se for comportamento oficial para o cliente MCP, deve virar tool em `src/tools/`. Se for exploração/debug pontual, fica em `scripts/`.
+
+## Importar produtos por planilha
+
+O fluxo de importação de produtos fica em script operacional, não em tool MCP, para manter dry-run, relatório e arquivo local fáceis de auditar.
+
+Script:
+
+```bash
+scripts/import-products.ts
+```
+
+Planilhas reais devem ficar em `input/`, que é ignorado pelo git:
+
+```text
+input/PRODUTOS.xlsx
+```
+
+Relatórios reais devem ficar em `reports/`, também ignorado pelo git.
+
+Dry-run com API, sem criar/atualizar produtos:
+
+```bash
+npx tsx scripts/import-products.ts --file input/PRODUTOS.xlsx --report reports/products-import-dry-run.json
+```
+
+Envio real, somente depois de revisar o dry-run:
+
+```bash
+npx tsx scripts/import-products.ts --file input/PRODUTOS.xlsx --send --report reports/products-import-send-report.json
+```
+
+Comportamento padrão:
+
+- aceita CSV e XLSX;
+- se XLSX não tiver cabeçalho, assume coluna A = `name`, B = `id_sku`, C = `price`;
+- dry-run é o default;
+- produtos existentes são pulados por padrão;
+- atualização de existentes exige `--update-existing`;
+- escrita real exige `--send`;
+- planilhas reais e relatórios não devem ser commitados.
+
+Regras específicas usadas na planilha atual:
+
+- preço `*` vira `1`;
+- preço com barra, exemplo `350/450`, vira dois produtos: `NOME 01` com o primeiro preço e `NOME 02` com o segundo preço;
+- quando uma linha é dividida em dois produtos, o SKU também recebe sufixo `-01` e `-02`.
+
+Exemplo fake versionado:
+
+```text
+docs/examples/products-import.example.csv
+```
 
 ## Convenções do projeto
 

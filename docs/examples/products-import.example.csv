@@ -1,0 +1,5 @@
+nome,sku,preco
+Consulta Exemplo,SKU-EXEMPLO-001,"R$ 100,00"
+Ultrassom Exemplo,SKU-EXEMPLO-002,"250,50"
+Produto Sem SKU Exemplo,,123.45
+Produto Inválido Sem Preço,SKU-INVALIDO,

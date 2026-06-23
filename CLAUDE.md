@@ -71,7 +71,10 @@ Header:
 
 ```text
 access-token: <DATACRAZY_API_TOKEN>
+Authorization: Bearer <DATACRAZY_API_TOKEN>
 ```
+
+Tokens novos com prefixo `dc_` foram validados na REST usando `Authorization: Bearer`. `DataCrazyClient` envia os dois headers para compatibilidade.
 
 ### Webhook n8n
 
