@@ -83,14 +83,25 @@ Não há script de teste formal no `package.json` neste momento. Não finja que 
 
 ## Como adicionar uma nova tool
 
-1. Criar ou editar arquivo em `src/tools/<dominio>.ts`.
-2. Usar nome em `snake_case`.
-3. Escrever descrição em português.
-4. Validar entrada com `zod`.
-5. Se for destrutiva, usar `requireConfirmation`.
-6. Registrar no `src/index.ts`.
-7. Atualizar `README.md`, `CLAUDE.md` e este `AGENTS.md` se mudar comportamento/URL/env/processo.
-8. Rodar `npm run build`.
+> **Importante:** o servidor segue o pattern de **bundling** — uma única tool por domínio, com `action` discriminador. Ver `CLAUDE.md` seção "Pattern de bundling".
+
+Para uma operação nova:
+
+1. Encontrar o domínio em `src/tools/<dominio>.ts`.
+2. Adicionar o valor no `z.enum([...])` do `action`.
+3. Adicionar os params específicos no schema (todos `.optional()`, com `[novaAction]` na description).
+4. Adicionar o `case "novaAction":` no `switch` com validação de campos obrigatórios em runtime (`if (!params.x) throw`).
+5. Se destrutiva, chamar `requireConfirmation(config, params.confirm, "<dominio>.<action>")`.
+6. Rodar `npm run build`.
+7. Atualizar `README.md` (tabela de tools) + `CLAUDE.md` (mapa de módulos) se a action for usuário-visível.
+
+Para um domínio novo:
+
+1. Criar `src/tools/<dominio>.ts` seguindo o pattern.
+2. Nome da tool em snake_case, plural (`leads`, `tags`, `produtos`).
+3. Description com sinônimos pt-br pra ajudar a busca semântica (ex: "leads/contatos/clientes/prospects").
+4. Registrar a função `register*Tools` em `src/index.ts`.
+5. Não passar de ~30 tools totais — se aproximar disso, considere bundlar dois domínios próximos.
 
 ## REST vs MCP oficial
 

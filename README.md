@@ -143,12 +143,12 @@ Observação: tokens novos com prefixo `dc_` foram validados na REST usando `Aut
 https://n8m.conversoai.com.br/webhook/3394ed04-1c67-4bae-89ec-ee71f46b6d95
 ```
 
-Usado pelas tools:
+Usado pela tool `n8n_sync`:
 
-- `n8n_sync_lead_qualificado` → etapa `Orcamento Enviado`
-- `n8n_sync_lead_convertido` → etapa `Convertido`
+- `n8n_sync({ action: "lead_qualificado", leadId, businessId? })` → planilha `NOVA_LUZ_LEAD_QUALIFICADO`, etapa `Orcamento Enviado`
+- `n8n_sync({ action: "lead_convertido", leadId, businessId? })` → planilha `NOVA_LUZ_LEAD_CONVERTIDO`, etapa `Convertido`
 
-Por padrão, essas tools também ficam em dry-run por causa de `N8N_DRY_RUN=true`.
+Por padrão fica em dry-run por causa de `N8N_DRY_RUN=true` (a tool só loga o payload).
 
 ## Arquitetura
 
@@ -174,92 +174,44 @@ Cliente MCP (Claude/Cursor/Hermes)
 
 ## Tools disponíveis
 
-Total atual no código: 64 tools.
+Total: **18 tools**, uma por domínio. Cada tool aceita um parâmetro `action` que escolhe a operação. Esse design (bundling) é deliberado — evita que o Claude Desktop ative o modo `tool_search`, que esconde tools individuais atrás de uma busca semântica.
 
-### Leads
+| Tool | Actions | Para que serve |
+|---|---|---|
+| `leads` | list, get, create, update, delete | leads/contatos/clientes/prospects |
+| `lead_notes` | list, add, update, delete | notas/comentários em lead |
+| `lead_attachments` | list, add, delete | anexos/arquivos em lead |
+| `lead_history` | (única) | histórico/timeline de alterações do lead |
+| `lead_activities` | (única) | atividades vinculadas ao lead |
+| `lead_businesses` | (única) | negócios vinculados ao lead |
+| `businesses` | list, get, create, update, delete | negócios/deals/oportunidades |
+| `business_actions` | move, win, lose, restore | mover etapa, ganhar, perder, restaurar |
+| `activities` | list, get, create, update, delete | atividades/tarefas/ligações |
+| `conversations` | list, messages, send, finish | conversas/atendimentos |
+| `pipelines` | list, get, stages | pipelines/funis e etapas (read-only) |
+| `tags` | list, get, create, update, delete | tags/etiquetas/categorias |
+| `lists` | list, get, create, update, delete | listas/segmentos |
+| `products` | list, get, create, update, delete | produtos/serviços/cursos |
+| `loss_reasons` | list, get, create, update, delete | motivos de perda |
+| `attendants` | list, get (com `scope: crm \| multi`) | atendentes/vendedores (read-only) |
+| `instances` | list, get | instâncias de conexão (WhatsApp etc, read-only) |
+| `n8n_sync` | lead_qualificado, lead_convertido | sync com planilhas Google via n8n |
 
-- `list_leads`
-- `get_lead`
-- `create_lead`
-- `update_lead`
-- `delete_lead`
-- `list_lead_notes`
-- `add_lead_note`
-- `update_lead_note`
-- `delete_lead_note`
-- `get_lead_history`
-- `list_lead_businesses`
-- `list_lead_attachments`
-- `add_lead_attachment`
-- `delete_lead_attachment`
-- `list_lead_activities`
+Exemplo de chamada:
 
-### Negócios/businesses
+```jsonc
+// Listar leads
+{ "name": "leads", "arguments": { "action": "list", "take": 50 } }
 
-- `list_businesses`
-- `get_business`
-- `create_business`
-- `update_business`
-- `delete_business`
-- `move_business`
-- `win_business`
-- `lose_business`
-- `restore_business`
+// Criar lead
+{ "name": "leads", "arguments": { "action": "create", "name": "Ana", "phone": "11999999999" } }
 
-### Conversas e mensagens
+// Deletar lead (precisa confirm em SAFE_MODE)
+{ "name": "leads", "arguments": { "action": "delete", "id": "...", "confirm": true } }
 
-- `list_conversations`
-- `get_conversation_messages`
-- `send_message`
-- `finish_conversation`
-
-### Atividades
-
-- `list_activities`
-- `get_activity`
-- `create_activity`
-- `update_activity`
-- `delete_activity`
-
-### Configurações do CRM
-
-- `list_pipelines`
-- `get_pipeline`
-- `get_pipeline_stages`
-- `list_tags`
-- `get_tag`
-- `create_tag`
-- `update_tag`
-- `delete_tag`
-- `list_lists`
-- `get_list`
-- `create_list`
-- `update_list`
-- `delete_list`
-- `list_products`
-- `get_product`
-- `create_product`
-- `update_product`
-- `delete_product`
-- `list_loss_reasons`
-- `get_loss_reason`
-- `create_loss_reason`
-- `update_loss_reason`
-- `delete_loss_reason`
-
-### Atendentes e instâncias
-
-- `list_crm_attendants`
-- `get_crm_attendant`
-- `list_multi_attendants`
-- `get_multi_attendant`
-- `list_instances`
-- `get_instance`
-
-### n8n / planilhas
-
-- `n8n_sync_lead_qualificado`
-- `n8n_sync_lead_convertido`
+// Mover negócios para outra etapa
+{ "name": "business_actions", "arguments": { "action": "move", "ids": ["a","b"], "destinationStageId": "..." } }
+```
 
 ## Safe mode
 
@@ -273,10 +225,10 @@ Quando ligado, operações destrutivas exigem o argumento:
 
 Use isso principalmente em:
 
-- `delete_*`
-- `lose_business`
-- `finish_conversation`
-- tools n8n quando for envio real
+- qualquer `action: "delete"` (em `leads`, `businesses`, `tags`, `lists`, `products`, `loss_reasons`, `lead_notes`, `lead_attachments`, `activities`)
+- `business_actions({ action: "lose", ... })`
+- `conversations({ action: "finish", ... })`
+- `n8n_sync` quando for envio real (`dryRun: false`)
 
 Para desligar globalmente:
 

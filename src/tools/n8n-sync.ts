@@ -46,10 +46,7 @@ function pickPhone(lead: LeadResumo): string | undefined {
   return lead.rawPhone || lead.phone;
 }
 
-function pickAdditionalField(
-  lead: LeadResumo,
-  candidates: string[],
-): string | undefined {
+function pickAdditionalField(lead: LeadResumo, candidates: string[]): string | undefined {
   const lc = candidates.map((c) => c.toLowerCase());
   for (const f of lead.additionalFields ?? []) {
     const name = f.additionalField?.name?.toLowerCase();
@@ -63,7 +60,7 @@ function pickAdditionalField(
 
 async function postToN8n(
   url: string,
-  payload: Record<string, string | number | undefined>,
+  payload: Record<string, string | number | undefined>
 ): Promise<{ status: number; body: string; url: string }> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(payload)) {
@@ -96,22 +93,31 @@ function buildPayload(args: {
   };
 }
 
+const schema = {
+  action: z
+    .enum(["lead_qualificado", "lead_convertido"])
+    .describe("Qual planilha alimentar: lead_qualificado (NOVA_LUZ_LEAD_QUALIFICADO) ou lead_convertido (NOVA_LUZ_LEAD_CONVERTIDO)"),
+  leadId: z.string().describe("ID do lead no CRM (obrigatorio)"),
+  businessId: z.string().optional().describe("ID do business (opcional, pra puxar valor)"),
+  confirm: z.boolean().optional().describe("Confirmar envio (necessario em SAFE_MODE)"),
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe("Se true, apenas LOGA o payload. Default: true. Setar false para enviar de verdade."),
+};
+
 export function registerN8nSyncTools(server: McpServer, mcp: McpClient, config: Config) {
-  // ─── Lead qualificado → NOVA_LUZ_LEAD_QUALIFICADO ───────────────────────
   server.tool(
-    "n8n_sync_lead_qualificado",
-    "Busca lead/business no CRM e envia para o webhook n8n (planilha NOVA_LUZ_LEAD_QUALIFICADO). dryRun=true por padrão — só envia se você setar explicitamente.",
-    {
-      leadId: z.string().describe("ID do lead no CRM (obrigatorio)"),
-      businessId: z.string().optional().describe("ID do business (opcional, pra puxar valor)"),
-      confirm: z.boolean().optional().describe("Confirmar envio (necessario em SAFE_MODE)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("Se true, apenas LOGA o payload. Default: true. Setar false para enviar."),
-    },
+    "n8n_sync",
+    "Sincronizar lead do DataCrazy CRM com planilhas Google via webhook n8n. dryRun=true por padrao. Actions: lead_qualificado (orcamento enviado) ou lead_convertido (vendido).",
+    schema,
     async (params) => {
-      const check = requireConfirmation(config, params.confirm, "n8n_sync_lead_qualificado");
+      const cfg =
+        params.action === "lead_qualificado"
+          ? { etapa: ETAPA_QUALIFICADO, planilha: "NOVA_LUZ_LEAD_QUALIFICADO" }
+          : { etapa: ETAPA_CONVERTIDO, planilha: "NOVA_LUZ_LEAD_CONVERTIDO" };
+
+      const check = requireConfirmation(config, params.confirm, `n8n_sync.${params.action}`);
       if (check.blocked) return { content: [{ type: "text", text: check.message }] };
 
       const lead = await mcp.callTool<LeadResumo>("lead_get", { id: params.leadId });
@@ -129,8 +135,8 @@ export function registerN8nSyncTools(server: McpServer, mcp: McpClient, config: 
 
       const gclid = pickAdditionalField(lead, ["gclid", "wbraid", "gbraid", "pageId"]);
       const payload = buildPayload({
-        etapa: ETAPA_QUALIFICADO,
-        planilha: "NOVA_LUZ_LEAD_QUALIFICADO",
+        etapa: cfg.etapa,
+        planilha: cfg.planilha,
         lead,
         business,
         gclid,
@@ -151,7 +157,7 @@ export function registerN8nSyncTools(server: McpServer, mcp: McpClient, config: 
                   hint: "Para enviar de verdade, chame de novo com dryRun: false",
                 },
                 null,
-                2,
+                2
               ),
             },
           ],
@@ -159,7 +165,7 @@ export function registerN8nSyncTools(server: McpServer, mcp: McpClient, config: 
       }
 
       const result = await postToN8n(config.n8nWebhookUrl, {
-        etapa: ETAPA_QUALIFICADO,
+        etapa: cfg.etapa,
         telefone: pickPhone(lead),
         email: lead.email,
         gclid,
@@ -178,100 +184,11 @@ export function registerN8nSyncTools(server: McpServer, mcp: McpClient, config: 
                 n8nResponse: result.body.slice(0, 300),
               },
               null,
-              2,
+              2
             ),
           },
         ],
       };
-    },
-  );
-
-  // ─── Lead convertido → NOVA_LUZ_LEAD_CONVERTIDO ────────────────────────
-  server.tool(
-    "n8n_sync_lead_convertido",
-    "Busca lead/business no CRM e envia para o webhook n8n (planilha NOVA_LUZ_LEAD_CONVERTIDO). dryRun=true por padrão — só envia se você setar explicitamente.",
-    {
-      leadId: z.string().describe("ID do lead no CRM (obrigatorio)"),
-      businessId: z.string().optional().describe("ID do business (opcional, pra puxar valor)"),
-      confirm: z.boolean().optional().describe("Confirmar envio (necessario em SAFE_MODE)"),
-      dryRun: z
-        .boolean()
-        .optional()
-        .describe("Se true, apenas LOGA o payload. Default: true. Setar false para enviar."),
-    },
-    async (params) => {
-      const check = requireConfirmation(config, params.confirm, "n8n_sync_lead_convertido");
-      if (check.blocked) return { content: [{ type: "text", text: check.message }] };
-
-      const lead = await mcp.callTool<LeadResumo>("lead_get", { id: params.leadId });
-      if (!lead?.id) {
-        return { content: [{ type: "text", text: "Lead não encontrado no CRM" }] };
-      }
-
-      let business: BusinessResumo | undefined;
-      if (params.businessId) {
-        const list = await mcp.callTool<{ data?: BusinessResumo[] }>("lead_list_businesses", {
-          leadId: params.leadId,
-        });
-        business = list?.data?.find((b) => b.id === params.businessId);
-      }
-
-      const gclid = pickAdditionalField(lead, ["gclid", "wbraid", "gbraid", "pageId"]);
-      const payload = buildPayload({
-        etapa: ETAPA_CONVERTIDO,
-        planilha: "NOVA_LUZ_LEAD_CONVERTIDO",
-        lead,
-        business,
-        gclid,
-        valor: business?.total,
-      });
-
-      const effectiveDryRun = params.dryRun ?? config.n8nDryRun;
-      if (effectiveDryRun) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  mode: "DRY-RUN (nada foi enviado)",
-                  webhook: config.n8nWebhookUrl,
-                  payload,
-                  hint: "Para enviar de verdade, chame de novo com dryRun: false",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-
-      const result = await postToN8n(config.n8nWebhookUrl, {
-        etapa: ETAPA_CONVERTIDO,
-        telefone: pickPhone(lead),
-        email: lead.email,
-        gclid,
-        valor: business?.total,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                mode: "ENVIADO",
-                ok: result.status >= 200 && result.status < 300,
-                status: result.status,
-                payload,
-                n8nResponse: result.body.slice(0, 300),
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
+    }
   );
 }

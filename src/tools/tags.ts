@@ -4,47 +4,62 @@ import { DataCrazyClient } from "../client.js";
 import { Config } from "../config.js";
 import { requireConfirmation } from "../safe-mode.js";
 
+const schema = {
+  action: z
+    .enum(["list", "get", "create", "update", "delete"])
+    .describe("Operacao: list, get, create, update, delete"),
+
+  id: z.string().optional().describe("[get/update/delete] ID da tag"),
+  name: z.string().optional().describe("[create/update] Nome da tag (obrigatorio em create)"),
+  color: z.string().optional().describe("[create/update] Cor em hex (ex: #FF0000)"),
+  description: z.string().optional().describe("[create/update] Descricao da tag"),
+  useRandomColor: z.boolean().optional().describe("[create] Usar cor aleatoria"),
+
+  confirm: z.boolean().optional().describe("[delete] Confirmar exclusao (necessario em SAFE_MODE)"),
+};
+
 export function registerTagsTools(server: McpServer, client: DataCrazyClient, config: Config) {
-  server.tool("list_tags", "Buscar todas as tags do CRM", {}, async () => {
-    const result = await client.get("/api/v1/tags");
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("get_tag", "Buscar tag por ID", {
-    id: z.string().describe("ID da tag"),
-  }, async (params) => {
-    const result = await client.get(`/api/v1/tags/${params.id}`);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("create_tag", "Criar uma nova tag", {
-    name: z.string().describe("Nome da tag"),
-    color: z.string().optional().describe("Cor em hex (ex: #FF0000)"),
-    description: z.string().optional().describe("Descricao da tag"),
-    useRandomColor: z.boolean().optional().describe("Usar cor aleatoria"),
-  }, async (params) => {
-    const result = await client.post("/api/v1/tags", params);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("update_tag", "Atualizar uma tag existente", {
-    id: z.string().describe("ID da tag"),
-    name: z.string().optional().describe("Nome"),
-    color: z.string().optional().describe("Cor em hex"),
-    description: z.string().optional().describe("Descricao"),
-  }, async (params) => {
-    const { id, ...body } = params;
-    const result = await client.put(`/api/v1/tags/${id}`, body);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("delete_tag", "Excluir uma tag (irreversivel)", {
-    id: z.string().describe("ID da tag"),
-    confirm: z.boolean().optional().describe("Confirmar exclusao (necessario em SAFE_MODE)"),
-  }, async (params) => {
-    const check = requireConfirmation(config, params.confirm, "delete_tag");
-    if (check.blocked) return { content: [{ type: "text", text: check.message }] };
-    const result = await client.delete(`/api/v1/tags/${params.id}`);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
+  server.tool(
+    "tags",
+    "Gerenciar tags/etiquetas/labels/categorias do CRM DataCrazy (usadas para classificar leads, campanhas, fontes). Actions: list, get, create, update, delete.",
+    schema,
+    async (params) => {
+      switch (params.action) {
+        case "list": {
+          const result = await client.get("/api/v1/tags");
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "get": {
+          if (!params.id) throw new Error("action=get requer 'id'");
+          const result = await client.get(`/api/v1/tags/${params.id}`);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "create": {
+          if (!params.name) throw new Error("action=create requer 'name'");
+          const body: Record<string, unknown> = { name: params.name };
+          if (params.color) body.color = params.color;
+          if (params.description) body.description = params.description;
+          if (params.useRandomColor !== undefined) body.useRandomColor = params.useRandomColor;
+          const result = await client.post("/api/v1/tags", body);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "update": {
+          if (!params.id) throw new Error("action=update requer 'id'");
+          const body: Record<string, unknown> = {};
+          if (params.name) body.name = params.name;
+          if (params.color) body.color = params.color;
+          if (params.description) body.description = params.description;
+          const result = await client.put(`/api/v1/tags/${params.id}`, body);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "delete": {
+          if (!params.id) throw new Error("action=delete requer 'id'");
+          const check = requireConfirmation(config, params.confirm, "tags.delete");
+          if (check.blocked) return { content: [{ type: "text", text: check.message }] };
+          const result = await client.delete(`/api/v1/tags/${params.id}`);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+      }
+    }
+  );
 }

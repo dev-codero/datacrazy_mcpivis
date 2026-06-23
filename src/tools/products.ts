@@ -4,46 +4,59 @@ import { DataCrazyClient } from "../client.js";
 import { Config } from "../config.js";
 import { requireConfirmation } from "../safe-mode.js";
 
+const schema = {
+  action: z
+    .enum(["list", "get", "create", "update", "delete"])
+    .describe("Operacao: list, get, create, update, delete"),
+
+  id: z.string().optional().describe("[get/update/delete] ID do produto"),
+  name: z.string().optional().describe("[create/update] Nome do produto (obrigatorio em create)"),
+  price: z.number().optional().describe("[create/update] Preco (obrigatorio em create)"),
+  id_sku: z.string().optional().describe("[create/update] SKU do produto"),
+
+  confirm: z.boolean().optional().describe("[delete] Confirmar exclusao (necessario em SAFE_MODE)"),
+};
+
 export function registerProductsTools(server: McpServer, client: DataCrazyClient, config: Config) {
-  server.tool("list_products", "Buscar todos os produtos do CRM", {}, async () => {
-    const result = await client.get("/api/v1/products");
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("get_product", "Buscar produto por ID", {
-    id: z.string().describe("ID do produto"),
-  }, async (params) => {
-    const result = await client.get(`/api/v1/products/${params.id}`);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("create_product", "Criar um novo produto", {
-    name: z.string().describe("Nome do produto"),
-    price: z.number().describe("Preco do produto"),
-    id_sku: z.string().optional().describe("SKU do produto"),
-  }, async (params) => {
-    const result = await client.post("/api/v1/products", params);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("update_product", "Atualizar um produto existente", {
-    id: z.string().describe("ID do produto"),
-    name: z.string().optional().describe("Nome"),
-    price: z.number().optional().describe("Preco"),
-    id_sku: z.string().optional().describe("SKU"),
-  }, async (params) => {
-    const { id, ...body } = params;
-    const result = await client.put(`/api/v1/products/${id}`, body);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
-
-  server.tool("delete_product", "Excluir produto (nao pode se estiver vinculado a negocio)", {
-    id: z.string().describe("ID do produto"),
-    confirm: z.boolean().optional().describe("Confirmar exclusao (necessario em SAFE_MODE)"),
-  }, async (params) => {
-    const check = requireConfirmation(config, params.confirm, "delete_product");
-    if (check.blocked) return { content: [{ type: "text", text: check.message }] };
-    const result = await client.delete(`/api/v1/products/${params.id}`);
-    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-  });
+  server.tool(
+    "products",
+    "Gerenciar produtos/servicos/cursos/itens do catalogo do CRM DataCrazy. Actions: list, get, create, update, delete.",
+    schema,
+    async (params) => {
+      switch (params.action) {
+        case "list": {
+          const result = await client.get("/api/v1/products");
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "get": {
+          if (!params.id) throw new Error("action=get requer 'id'");
+          const result = await client.get(`/api/v1/products/${params.id}`);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "create": {
+          if (!params.name || params.price === undefined) throw new Error("action=create requer 'name' e 'price'");
+          const body: Record<string, unknown> = { name: params.name, price: params.price };
+          if (params.id_sku) body.id_sku = params.id_sku;
+          const result = await client.post("/api/v1/products", body);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "update": {
+          if (!params.id) throw new Error("action=update requer 'id'");
+          const body: Record<string, unknown> = {};
+          if (params.name) body.name = params.name;
+          if (params.price !== undefined) body.price = params.price;
+          if (params.id_sku) body.id_sku = params.id_sku;
+          const result = await client.put(`/api/v1/products/${params.id}`, body);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+        case "delete": {
+          if (!params.id) throw new Error("action=delete requer 'id'");
+          const check = requireConfirmation(config, params.confirm, "products.delete");
+          if (check.blocked) return { content: [{ type: "text", text: check.message }] };
+          const result = await client.delete(`/api/v1/products/${params.id}`);
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        }
+      }
+    }
+  );
 }

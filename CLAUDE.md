@@ -249,26 +249,54 @@ Nunca assumir envio real sem verificar essa env var.
 
 ## Mapa de módulos
 
-| Arquivo | Responsabilidade |
-|---|---|
-| `src/tools/leads.ts` | CRUD de leads |
-| `src/tools/lead-notes.ts` | comentários/anotações de lead |
-| `src/tools/lead-attachments.ts` | anexos de lead |
-| `src/tools/lead-history.ts` | histórico de lead |
-| `src/tools/lead-activities.ts` | atividades por lead |
-| `src/tools/lead-businesses.ts` | negócios por lead |
-| `src/tools/businesses.ts` | CRUD de negócios |
-| `src/tools/business-actions.ts` | mover, ganhar, perder, restaurar negócio |
-| `src/tools/activities.ts` | CRUD de atividades |
-| `src/tools/conversations.ts` | conversas e mensagens |
-| `src/tools/pipelines.ts` | pipelines e stages |
-| `src/tools/tags.ts` | tags |
-| `src/tools/lists.ts` | listas |
-| `src/tools/products.ts` | produtos |
-| `src/tools/loss-reasons.ts` | motivos de perda |
-| `src/tools/attendants.ts` | atendentes CRM/multiatendimento |
-| `src/tools/instances.ts` | instâncias de conexão |
-| `src/tools/n8n-sync.ts` | envio para n8n/planilhas |
+Cada arquivo expõe **uma única tool** com discriminador `action` (bundling). Motivo: Claude Desktop ativa modo `tool_search` quando o servidor declara muitas tools, escondendo todas atrás de uma busca semântica que não casa bem. Com 18 tools ficamos abaixo desse threshold.
+
+| Arquivo | Tool MCP | Actions |
+|---|---|---|
+| `src/tools/leads.ts` | `leads` | list, get, create, update, delete |
+| `src/tools/lead-notes.ts` | `lead_notes` | list, add, update, delete |
+| `src/tools/lead-attachments.ts` | `lead_attachments` | list, add, delete |
+| `src/tools/lead-history.ts` | `lead_history` | (operação única) |
+| `src/tools/lead-activities.ts` | `lead_activities` | (operação única) |
+| `src/tools/lead-businesses.ts` | `lead_businesses` | (operação única) |
+| `src/tools/businesses.ts` | `businesses` | list, get, create, update, delete |
+| `src/tools/business-actions.ts` | `business_actions` | move, win, lose, restore |
+| `src/tools/activities.ts` | `activities` | list, get, create, update, delete |
+| `src/tools/conversations.ts` | `conversations` | list, messages, send, finish |
+| `src/tools/pipelines.ts` | `pipelines` | list, get, stages |
+| `src/tools/tags.ts` | `tags` | list, get, create, update, delete |
+| `src/tools/lists.ts` | `lists` | list, get, create, update, delete |
+| `src/tools/products.ts` | `products` | list, get, create, update, delete |
+| `src/tools/loss-reasons.ts` | `loss_reasons` | list, get, create, update, delete |
+| `src/tools/attendants.ts` | `attendants` | list, get (com `scope: crm\|multi`) |
+| `src/tools/instances.ts` | `instances` | list, get |
+| `src/tools/n8n-sync.ts` | `n8n_sync` | lead_qualificado, lead_convertido |
+
+### Pattern de bundling
+
+```ts
+server.tool(
+  "<dominio>",                                          // nome curto, snake_case, plural
+  "<descricao com sinonimos pt-br pra busca semantica>",
+  {
+    action: z.enum([...]).describe("..."),              // discriminador
+    // união achatada de todos os parametros, todos opcionais,
+    // descrição prefixada com [action] pra orientar o LLM
+    id: z.string().optional().describe("[get/update/delete] ..."),
+    name: z.string().optional().describe("[create/update] ..."),
+    confirm: z.boolean().optional().describe("[delete] ..."),
+  },
+  async (params) => {
+    switch (params.action) {
+      case "list": { ... }
+      case "get": { if (!params.id) throw new Error("action=get requer 'id'"); ... }
+      // ...
+    }
+  }
+);
+```
+
+Validação de campos obrigatórios é feita em runtime (`if (!params.x) throw`), não no schema. Razão: `discriminatedUnion` do Zod gera `oneOf` no JSON Schema MCP, que clientes lidam mal.
 
 ## Regras para agentes trabalhando neste repo
 
@@ -288,3 +316,21 @@ npm run build
 ```
 
 Resultado: build TypeScript concluído com sucesso.
+
+## Rate limit do MCP oficial DataCrazy
+
+Medido em 2026-06-23 contra `https://mcp.g1.datacrazy.io/api/mcp` usando burst de `tools/list` (rota protocolar, não toca CRM).
+
+| Carga | Requisições | Resultado | Latência média |
+|---|---:|---|---:|
+| 10 rps × 30s | 300 | 300/300 `201` | ~80ms |
+| 20 rps × 30s | 600 | 600/600 `201` | ~80ms |
+
+Conclusões:
+
+- Teto **maior que 20 rps (≥ 1200 req/min)** para `tools/list` — não foi encontrado o ceiling real.
+- Sem `429`, sem `Retry-After`, sem degradação de latência.
+- Mesmo comportamento com tokens de planos diferentes — gateway MCP não diferenciou rate-limit por plano nessa rota.
+- Não testado em rotas pesadas (ex: `list_leads` paginado) — rate-limit pode morder só em queries de DB.
+
+Quem precisar de número conservador para client-side throttling, usar **≤ 15 rps por token** como margem segura até medir o teto real.
