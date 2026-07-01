@@ -150,6 +150,36 @@ Usado pela tool `n8n_sync`:
 
 Por padrão fica em dry-run por causa de `N8N_DRY_RUN=true` (a tool só loga o payload).
 
+### Endpoints MCP para uso direto no n8n
+
+Existem dois jeitos de o n8n falar com o DataCrazy via MCP:
+
+1. **Webhook de sync** (acima) — a tool local `n8n_sync` busca o lead/negócio no CRM via MCP oficial e empurra um payload pronto para o webhook n8n/Google Sheets.
+2. **Chamada direta ao MCP oficial** — um node **HTTP Request** no n8n pode chamar `https://mcp.g1.datacrazy.io/api/mcp` diretamente (JSON-RPC, método `tools/call`), sem passar por este servidor local. Útil quando o fluxo do n8n precisa de uma ação que a tool `n8n_sync` não cobre (criar lead, mover negócio de etapa, adicionar tag, etc.).
+
+Documentação completa da opção 2, uma tool por arquivo, em [`n8n/`](n8n/README.md) — **71 tools** do MCP oficial, organizadas por grupo:
+
+| Grupo | Tools | Cobre |
+|---|---:|---|
+| [leads](n8n/leads) | 14 | criar/consultar/atualizar lead, tags, listas, negócios do lead |
+| [businesses](n8n/businesses) | 10 | criar negócio, mover etapa, ganhar/perder, produtos do negócio |
+| [conversations](n8n/conversations) | 5 | enviar mensagem, listar conversas/mensagens |
+| [pipelines](n8n/pipelines) | 6 | pipelines, grupos, etapas |
+| [tags](n8n/tags) | 4 | CRUD de tags |
+| [list](n8n/list) | 4 | CRUD de listas |
+| [products](n8n/products) | 4 | CRUD de produtos |
+| [additional_fields](n8n/additional_fields) | 6 | campos customizados de lead/negócio/empresa |
+| [activities](n8n/activities) | 4 | tipos de atividade |
+| [loss_reason](n8n/loss_reason) | 4 | motivos de perda |
+| [attendants](n8n/attendants) | 2 | consulta de atendentes |
+| [department](n8n/department) | 4 | CRUD de departamentos |
+| [instance](n8n/instance) | 2 | instâncias de WhatsApp/canal |
+| [working_hours](n8n/working_hours) | 2 | horário de funcionamento |
+
+Cada arquivo em `n8n/<grupo>/` traz: configuração do node HTTP Request (method/URL/headers/body), exemplo com valores fixos, exemplo usando dados de node anterior, como interpretar/conferir a resposta, curl para testar fora do n8n, e erros comuns. Comece pelo índice: [`n8n/README.md`](n8n/README.md).
+
+Das tools locais deste servidor (seção seguinte), só a `n8n_sync` usa o MCP oficial internamente — as outras 17 falam com a REST legada (`src/client.ts`).
+
 ## Arquitetura
 
 ```text
