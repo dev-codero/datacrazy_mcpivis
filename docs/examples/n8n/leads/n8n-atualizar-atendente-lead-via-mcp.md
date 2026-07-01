@@ -1,0 +1,422 @@
+# n8n — atualizar atendente de um lead via MCP DataCrazy
+Este guia mostra como configurar um node **HTTP Request** no n8n para atribuir ou remover o atendente (vendedor responsável) de um lead no DataCrazy usando o MCP oficial.
+
+## Quando usar
+
+Use este fluxo quando precisar atribuir um atendente a um lead, ou remover o atendente atual, usando a tool:
+
+```text
+lead_update_attendant
+```
+
+## Dados necessários
+
+```text
+DATACRAZY_API_TOKEN  Token da DataCrazy
+id                    ID do lead (obrigatório)
+userId                ID do usuário atendente (obrigatório) — envie string vazia "" para remover o atendente atual
+```
+
+A URL do MCP oficial é:
+
+```text
+https://mcp.g1.datacrazy.io/api/mcp
+```
+
+## Node no n8n
+
+Adicione um node:
+
+```text
+HTTP Request
+```
+
+Configure assim.
+
+## 1. Method
+
+```text
+POST
+```
+
+## 2. URL
+
+```text
+https://mcp.g1.datacrazy.io/api/mcp
+```
+
+## 3. Authentication
+
+Deixe como:
+
+```text
+None
+```
+
+A autenticação será feita manualmente nos headers.
+
+## 4. Headers
+
+Ative **Send Headers** e adicione:
+
+```text
+Authorization: Bearer SEU_TO...AQUI
+Content-Type: application/json
+Accept: application/json, text/event-stream
+```
+
+Exemplo:
+
+```text
+Authorization: Bearer dc_xxx...xxxx
+```
+
+Importante: mantenha a palavra `Bearer` antes do token.
+
+## 5. Body
+
+Ative **Send Body**.
+
+Escolha o tipo:
+
+```text
+JSON
+```
+
+Use este body:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "ID_DO_LEAD_AQUI",
+      "userId": "ID_DO_ATENDENTE_AQUI"
+    }
+  }
+}
+```
+
+Substitua:
+
+```text
+ID_DO_LEAD_AQUI       pelo ID real do lead
+ID_DO_ATENDENTE_AQUI  pelo ID real do usuário atendente (ou "" para remover)
+```
+
+## Exemplo com valores fixos
+
+Atribuir um atendente:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "abc123-lead",
+      "userId": "jkl012-user"
+    }
+  }
+}
+```
+
+Remover o atendente atual:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "abc123-lead",
+      "userId": ""
+    }
+  }
+}
+```
+
+## Exemplo usando dados de node anterior
+
+Se o node anterior entrega:
+
+```json
+{
+  "leadId": "abc123-lead",
+  "attendantId": "jkl012-user"
+}
+```
+
+Use no body:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "{{$json.leadId}}",
+      "userId": "{{$json.attendantId}}"
+    }
+  }
+}
+```
+
+Se os campos vierem como `lead_id` e `attendant_id`, use:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "{{$json.lead_id}}",
+      "userId": "{{$json.attendant_id}}"
+    }
+  }
+}
+```
+
+## Resposta esperada
+
+O MCP normalmente responde neste formato:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{...json em formato string...}"
+      }
+    ]
+  }
+}
+```
+
+O resultado real geralmente fica em:
+
+```text
+result.content[0].text
+```
+
+Se precisar transformar esse `text` em JSON no n8n, adicione um node **Code** depois do HTTP Request:
+
+```js
+const text = $json.result.content[0].text;
+return [{ json: JSON.parse(text) }];
+```
+
+## Como conferir se atualizou
+
+Depois de atualizar, você pode consultar o lead com a tool:
+
+```text
+lead_get
+```
+
+Body para consultar o lead:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_get",
+    "arguments": {
+      "id": "{{$json.leadId}}"
+    }
+  }
+}
+```
+
+Confira se o atendente do lead corresponde ao `userId` enviado (ou se ficou sem atendente, no caso de remoção).
+
+## Resumo rápido
+
+```text
+Node: HTTP Request
+Method: POST
+URL: https://mcp.g1.datacrazy.io/api/mcp
+Authentication: None
+Headers:
+  Authorization: Bearer SEU_TO...RAZY
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+Body: JSON
+Tool MCP: lead_update_attendant
+```
+
+Body principal:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "lead_update_attendant",
+    "arguments": {
+      "id": "{{$json.leadId}}",
+      "userId": "{{$json.attendantId}}"
+    }
+  }
+}
+```
+
+## Curl para testar fora do n8n
+
+Antes de montar no n8n, você pode testar pelo terminal com `curl`.
+
+### Atribuir atendente ao lead
+
+```bash
+curl -X POST 'https://mcp.g1.datacrazy.io/api/mcp' \
+  -H 'Authorization: Bearer COLE_A_CHAVE_DATACRAZY_AQUI' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "lead_update_attendant",
+      "arguments": {
+        "id": "ID_DO_LEAD_AQUI",
+        "userId": "ID_DO_ATENDENTE_AQUI"
+      }
+    }
+  }'
+```
+
+Substitua:
+
+```text
+COLE_A_CHAVE_DATACRAZY_AQUI  chave/token da DataCrazy
+ID_DO_LEAD_AQUI              ID real do lead
+ID_DO_ATENDENTE_AQUI         ID real do usuário atendente
+```
+
+### Versão com variáveis
+
+```bash
+DC_AUTH='COLE_A_CHAVE_DATACRAZY_AQUI'
+LEAD_ID='ID_DO_LEAD_AQUI'
+USER_ID='ID_DO_ATENDENTE_AQUI'
+
+curl -X POST 'https://mcp.g1.datacrazy.io/api/mcp' \
+  -H "Authorization:"" Bearer $DC_AUTH" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"lead_update_attendant\",
+      \"arguments\": {
+        \"id\": \"$LEAD_ID\",
+        \"userId\": \"$USER_ID\"
+      }
+    }
+  }"
+```
+
+### Remover atendente
+
+```bash
+curl -X POST 'https://mcp.g1.datacrazy.io/api/mcp' \
+  -H "Authorization:"" Bearer $DC_AUTH" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"lead_update_attendant\",
+      \"arguments\": {
+        \"id\": \"$LEAD_ID\",
+        \"userId\": \"\"
+      }
+    }
+  }"
+```
+
+### Conferir o lead depois
+
+```bash
+curl -X POST 'https://mcp.g1.datacrazy.io/api/mcp' \
+  -H "Authorization:"" Bearer $DC_AUTH" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 2,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"lead_get\",
+      \"arguments\": {
+        \"id\": \"$LEAD_ID\"
+      }
+    }
+  }"
+```
+
+## Erros comuns
+
+### 401 / Unauthorized
+
+Verifique se o header está assim:
+
+```text
+Authorization: Bearer SEU_TO...AQUI
+```
+
+Não use só o token sem `Bearer`.
+
+### Tool não executa
+
+Confira se o body tem exatamente:
+
+```json
+"method": "tools/call"
+```
+
+e:
+
+```json
+"name": "lead_update_attendant"
+```
+
+### Campo obrigatório faltando
+
+```text
+id é obrigatório
+userId é obrigatório (mas pode ser string vazia "" para remover o atendente)
+```
+
+### Atendente não muda ou não some
+
+Verifique se:
+
+```text
+id é o ID real do lead
+userId é o ID real de um usuário/atendente existente
+```
+
+Lembre que enviar `userId: ""` (string vazia) remove o atendente atual — não confunda com omitir o campo, que não é uma opção válida já que `userId` é obrigatório. Para descobrir IDs de atendentes, chame a tool `attendants` com `action: "list"`.
