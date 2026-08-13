@@ -164,3 +164,60 @@ describe("McpClient", () => {
     expect(initAttempts).toBe(2);
   });
 });
+
+/**
+ * Regressao: o MCP do DataCrazy reporta falha de aplicacao dentro do payload de
+ * sucesso, nao como erro JSON-RPC. Antes de 2026-08-13 o cliente devolvia esses
+ * envelopes como se a operacao tivesse dado certo — foi assim que uma atribuicao
+ * de atendente "funcionou" sem atribuir nada.
+ */
+describe("erro dentro do payload de sucesso", () => {
+  function transporteComResultado(payload: unknown, extra: Record<string, unknown> = {}) {
+    return mockFetch((_call, index) => {
+      if (index === 0) return jsonResponse({ jsonrpc: "2.0", id: 1, result: {} });
+      return jsonResponse({
+        jsonrpc: "2.0",
+        id: 2,
+        result: { content: [{ type: "text", text: JSON.stringify(payload) }], ...extra },
+      });
+    });
+  }
+
+  it("lanca quando o payload e um envelope de erro textual", async () => {
+    transporteComResultado({ error: "Attendant was not found for the given userId." });
+    await expect(new McpClient(makeConfig()).callTool("lead_update_attendant")).rejects.toThrow(
+      /lead_update_attendant.*Attendant was not found/,
+    );
+  });
+
+  it("lanca no 'Internal server error' devolvido como dado", async () => {
+    transporteComResultado({ error: "Internal server error" });
+    await expect(new McpClient(makeConfig()).callTool("lead_add_tag")).rejects.toThrow(/Internal server error/);
+  });
+
+  it("lanca quando o erro vem como objeto com message", async () => {
+    transporteComResultado({ error: { message: "campo obrigatorio ausente" } });
+    await expect(new McpClient(makeConfig()).callTool("x")).rejects.toThrow(/campo obrigatorio ausente/);
+  });
+
+  it("respeita o isError do protocolo mesmo sem campo error", async () => {
+    transporteComResultado({ detalhe: "algo" }, { isError: true });
+    await expect(new McpClient(makeConfig()).callTool("y")).rejects.toThrow(/falhou/);
+  });
+
+  it("NAO lanca quando 'error' vem junto de dados uteis", async () => {
+    // Um registro que por acaso tem um campo chamado error nao e um envelope de erro.
+    transporteComResultado({ id: "lead-1", name: "Fulano", error: null });
+    await expect(new McpClient(makeConfig()).callTool("lead_get")).resolves.toMatchObject({ id: "lead-1" });
+  });
+
+  it("NAO lanca em payload normal", async () => {
+    transporteComResultado({ id: "1", name: "ok" });
+    await expect(new McpClient(makeConfig()).callTool("lead_get")).resolves.toMatchObject({ id: "1" });
+  });
+
+  it("NAO lanca em lista vazia", async () => {
+    transporteComResultado({ data: [] });
+    await expect(new McpClient(makeConfig()).callTool("lead_list")).resolves.toMatchObject({ data: [] });
+  });
+});
