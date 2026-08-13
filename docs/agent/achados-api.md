@@ -18,6 +18,12 @@
 | 6 | `check-env.ts` imprime 20 chars do token | Média | aberto (nosso) |
 | 7 | `DataCrazyClient` quebrava em `204 No Content` — todo delete reportava erro | **Alta** | ✅ corrigido |
 | 8 | MCP não expõe `business_delete` — exclusão só pelo REST, no gargalo | Média | aberto |
+| 9 | `McpClient` engolia erro de aplicação vindo no payload de sucesso | **Alta** | ✅ corrigido |
+| 10 | Tipo errado em `tagIds` devolve 500 em vez de 400 | Média | aberto |
+| 11 | `tag_update` sem `name` dá "Tag with the same name already exists" | Média | aberto |
+| 12 | `leadsCount` sempre 0 (tag com 600 leads reporta zero) | Baixa | aberto |
+| 13 | Atraso de propagação escrita → listagem do MCP (>20s) | Média | aberto |
+| — | Tag/atendente/associação no lead funcionam nos dois sentidos | — | ✅ verificado |
 | — | `business_list_by_stage` pagina corretamente | — | ✅ verificado íntegro |
 | — | Importação de 600 leads preservou tudo | — | ✅ verificado |
 | — | Escrita: MCP 4,6/s vs REST 0,83/s | — | ✅ medido |
@@ -260,6 +266,98 @@ npx tsx scripts/probe-write-throughput.ts --limpar   # se algo ficar pendente
 O script grava os ids criados em `tmp/negocios-criados.json` **antes** de seguir, então a limpeza
 sobrevive a Ctrl-C, queda de rede ou `429`. Ele se recusa a criar se houver pendências de uma
 execução anterior.
+
+---
+
+## Sugestões para o suporte DataCrazy
+
+> Bloco pronto para encaminhar. Cada item foi medido em 2026-08-13 contra o tenant `g1`, com token
+> `dc_` e MCP habilitado. Ordenado por impacto.
+
+### 1. Erros de aplicação vêm dentro do payload de sucesso
+
+`lead_update_attendant` com um `userId` inválido responde **HTTP 200 / JSON-RPC de sucesso**, com o
+corpo `{"error":"Attendant was not found for the given userId."}`. O mesmo vale para
+`lead_add_tag`, que devolve `{"error":"Internal server error"}`.
+
+Como não há `isError` no envelope MCP nem erro JSON-RPC, qualquer cliente — e principalmente um LLM
+do outro lado — trata a operação como concluída. **Foi assim que uma atribuição de atendente
+"funcionou" e não atribuiu nada.**
+
+*Sugestão:* usar `isError: true` no resultado MCP, ou devolver erro JSON-RPC.
+
+### 2. Tipo de parâmetro errado devolve 500 em vez de 400
+
+`lead_add_tag` e `lead_remove_tag` declaram `tagIds` como `{"type":"string"}` — correto e
+documentado. Mas passar um array (`["id"]`) devolve **`Internal server error`** em vez de um erro de
+validação. O nome plural convida ao array, então o erro é fácil de cometer.
+
+*Sugestão:* validar o tipo e responder 400 nomeando o campo.
+
+### 3. `tag_update` sem `name` dá erro enganoso
+
+Atualizar só a descrição:
+
+```
+tag_update { id, description }  →  "Tag with the same name already exists"
+```
+
+A tag colide com ela mesma. O campo `name` é obrigatório na prática, mas o erro sugere duplicidade
+de nome — manda o desenvolvedor investigar a coisa errada. Vale para MCP e REST (`PUT /api/v1/tags/{id}`).
+
+*Sugestão:* ou tornar `name` opcional no update, ou dizer "campo `name` é obrigatório".
+
+### 4. `leadsCount` sempre zero
+
+A tag `DEV` tem **600 leads associados** e `leadsCount` retorna `0`, nos três caminhos de leitura
+(MCP com `search`, MCP sem `search`, e REST `/api/v1/tags`).
+
+### 5. `lead_list` perde registros ao paginar
+
+Detalhado no achado #1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
+mas apenas **505 distintos** — 15,8% nunca aparecem, outros vêm repetidos. Acontece com qualquer
+filtro. A ordem é estável para um mesmo `skip`, o que sugere ordenação com empates sem desempate por
+chave única.
+
+*Sugestão:* ordenar por uma chave única (ex: `id`) como desempate.
+
+### 6. `lead_list` com `limit > 1000` devolve lista vazia
+
+Sem erro e sem clamp — indistinguível de "não há nenhum lead". Combinado com o #5, **não existe
+caminho confiável para ler mais de 1000 leads de um filtro**.
+
+*Sugestão:* clampar em 1000 e sinalizar, ou responder 400.
+
+### 7. `lead_list` não devolve `count`
+
+`business_list_by_stage` devolve `count`, e é isso que permite validar uma varredura. O `lead_list`
+devolve só `{ data: [...] }`, então o chamador não tem como perceber que perdeu registros.
+
+### 8. Não há `business_delete` no MCP
+
+As tools de negócio cobrem `create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`,
+`lose`, `update_attendant`, `add_product`, `remove_product`, `update_total` — nenhuma apaga. A
+exclusão só sai pelo REST, que tem cota de 60 req/min. Resultado: criar 500 negócios leva 1,8 min e
+apagá-los leva 10 min.
+
+### 9. `tag_create` do MCP não aceita cor
+
+O MCP expõe só `name` e `description`; o REST aceita `color` e `useRandomColor`. Quem usa só o MCP
+não consegue definir cor de tag.
+
+### 10. Atraso de propagação entre escrita e listagem
+
+Uma tag criada via REST apareceu em `GET /api/v1/tags` em **~320 ms**, mas não apareceu no
+`tag_list` do MCP nem após **20 s**. Ler logo após criar dá "não encontrado" e faz o chamador
+concluir que a criação falhou.
+
+*Sugestão:* documentar a janela de consistência, ou ler da mesma fonte da escrita.
+
+### 11. `attendant_list` expõe `id` e `userId`, e as escritas querem o `userId`
+
+O objeto tem os dois campos, e `lead_update_attendant` só aceita o `userId`
+(`jO0w2anSFFZK060L5zXRgmdzIz73`), não o `id` (`8b118632-…`). Passar o `id` cai no erro do item #1 —
+silencioso. Uma nota na descrição do parâmetro resolveria.
 
 ---
 
