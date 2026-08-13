@@ -1,5 +1,25 @@
 import { Config } from "./config.js";
 
+/**
+ * Deserializa a resposta tolerando corpo vazio.
+ *
+ * O DataCrazy responde `204 No Content` (sem corpo) nos DELETE bem-sucedidos.
+ * Chamar `res.json()` nesse caso lanca "Unexpected end of JSON input", e o erro
+ * sobe como se a operacao tivesse falhado — quando na verdade ela funcionou.
+ * Isso afetava a action `delete` de todas as tools.
+ */
+async function parseBody<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  if (!text.trim()) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Corpo nao-JSON num 2xx: devolvemos o texto cru em vez de explodir.
+    return text as unknown as T;
+  }
+}
+
 export class DataCrazyClient {
   constructor(private config: Config) {}
 
@@ -23,7 +43,7 @@ export class DataCrazyClient {
       const body = await res.text();
       throw new Error(`DataCrazy API error ${res.status}: ${body}`);
     }
-    return res.json() as Promise<T>;
+    return parseBody<T>(res);
   }
 
   async post<T = unknown>(path: string, body?: unknown): Promise<T> {
@@ -36,7 +56,7 @@ export class DataCrazyClient {
       const text = await res.text();
       throw new Error(`DataCrazy API error ${res.status}: ${text}`);
     }
-    return res.json() as Promise<T>;
+    return parseBody<T>(res);
   }
 
   async put<T = unknown>(path: string, body: unknown): Promise<T> {
@@ -49,7 +69,7 @@ export class DataCrazyClient {
       const text = await res.text();
       throw new Error(`DataCrazy API error ${res.status}: ${text}`);
     }
-    return res.json() as Promise<T>;
+    return parseBody<T>(res);
   }
 
   async patch<T = unknown>(path: string, body: unknown): Promise<T> {
@@ -62,7 +82,7 @@ export class DataCrazyClient {
       const text = await res.text();
       throw new Error(`DataCrazy API error ${res.status}: ${text}`);
     }
-    return res.json() as Promise<T>;
+    return parseBody<T>(res);
   }
 
   async delete<T = unknown>(path: string): Promise<T> {
@@ -74,6 +94,6 @@ export class DataCrazyClient {
       const text = await res.text();
       throw new Error(`DataCrazy API error ${res.status}: ${text}`);
     }
-    return res.json() as Promise<T>;
+    return parseBody<T>(res);
   }
 }
