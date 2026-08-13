@@ -287,8 +287,15 @@ Exemplos:
 npx tsx scripts/check-env.ts
 npx tsx scripts/list-tools.ts
 npx tsx scripts/probe-api.ts
-npx tsx scripts/test-sync.ts
+npx tsx scripts/scout.ts                                    # pipelines + stages do tenant
+npx tsx scripts/scout-all-stages.ts --pipeline="MCP DEV"    # contagem paginada por stage
+npx tsx scripts/scout-batches.ts --pipeline="MCP DEV"       # amostra dos campos do sync
+npx tsx scripts/inspect-sent.ts --limit=10                  # auditoria do .sync-state.json
 ```
+
+Os scripts que tocam pipeline/stage resolvem tudo por **nome** em runtime (`--pipeline="<nome>"`
+ou a env `SYNC_PIPELINE`) e falham alto listando o que existe. Não hardcode UUID: ids de pipeline
+e stage são por tenant.
 
 Regra: se for comportamento oficial para o cliente MCP, deve virar tool em `src/tools/`. Se for exploração/debug pontual, fica em `scripts/`.
 

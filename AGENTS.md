@@ -79,11 +79,20 @@ npm install
 npm run build
 ```
 
-Não há script de teste formal no `package.json` neste momento. Não finja que rodou testes inexistentes.
+Antes de dar uma mudança como pronta, rode também:
+
+```bash
+npm run typecheck
+npm test
+```
+
+`npm test` é offline (Vitest com `fetch` mockado) — não toca no CRM. Os smoke tests que usam rede real
+(`scripts/smoke-read.ts`, `scripts/probe-rate-limit.ts`, `scripts/probe-mcp-connector.ts`) são opt-in explícito
+e nunca rodam em `npm test`. Não finja que rodou testes que não rodou.
 
 ## Como adicionar uma nova tool
 
-> **Importante:** o servidor segue o pattern de **bundling** — uma única tool por domínio, com `action` discriminador. Ver `CLAUDE.md` seção "Pattern de bundling".
+> **Importante:** o servidor segue o pattern de **bundling** — uma única tool por domínio, com `action` discriminador. Ver `docs/agent/context.md` seção "Pattern de bundling".
 
 Para uma operação nova:
 
