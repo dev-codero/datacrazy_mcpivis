@@ -6,6 +6,20 @@
 
 import { Config } from "./config.js";
 
+/**
+ * Versao do protocolo MCP que anunciamos ao MCP oficial do DataCrazy.
+ *
+ * Este cliente e artesanal (nao usa o SDK), entao a versao nao e negociada
+ * automaticamente como no servidor — precisa ser subida na mao aqui.
+ *
+ * Mantida em sincronia com LATEST_PROTOCOL_VERSION do @modelcontextprotocol/sdk.
+ * O teste em tests/protocol-version.test.ts falha quando o SDK avanca e isto nao.
+ *
+ * Nota: a spec 2026-07-28 (core stateless, MCP Apps, MCP Tasks, OAuth 2.0/OIDC)
+ * ainda nao e suportada por nenhum SDK publicado — o teto do SDK 1.30.0 e 2025-11-25.
+ */
+export const MCP_PROTOCOL_VERSION = "2025-11-25";
+
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: number;
@@ -43,7 +57,7 @@ export class McpClient {
       id: this.nextId++,
       method: "initialize",
       params: {
-        protocolVersion: "2024-11-05",
+        protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: {},
         clientInfo: { name: "mcp-datacrazy", version: "1.0.0" },
       },
