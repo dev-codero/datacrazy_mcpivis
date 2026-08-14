@@ -1,6 +1,6 @@
-# Achados da API DataCrazy — caderno de testes
+# API DataCrazy — comportamento real, limites e bugs
 
-> Anotações vivas dos testes contra a API real. Cada achado tem **como reproduzir**, para que
+> Anotações vivas dos testes contra a API real. Cada item tem **como reproduzir**, para que
 > qualquer um confirme (ou descubra que foi corrigido) sem refazer a investigação.
 >
 > Ambiente dos testes: tenant `g1`, token `dc_` com MCP habilitado, 600 leads de teste com a tag `DEV`
@@ -8,7 +8,7 @@
 
 ## Placar
 
-| # | Achado | Severidade | Status |
+| # | Item | Severidade | Status |
 |---|---|---|---|
 | 1 | `lead_list` perde registros ao paginar com `skip`/`limit` | **Alta** | aberto |
 | 2 | `lead_list` devolve `[]` em silêncio quando `limit > 1000` | **Alta** | aberto |
@@ -248,7 +248,7 @@ o limite do serviço.
 ⚠️ **Não extrapole de amostra pequena.** Uma rodada de 20 deu 7,16/s; a de 500 deu 4,60/s — 36% mais
 lenta. Estimar 500 a partir de 20 erra por larga margem.
 
-**O gargalo é a exclusão.** O MCP não expõe `business_delete` (achado #8): as tools de negócio são
+**O gargalo é a exclusão.** O MCP não expõe `business_delete` (item #8): as tools de negócio são
 `create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`, `lose`, `update_attendant`,
 `add_product`, `remove_product`, `update_total`. Apagar só pelo REST, e aí valem os 60 req/min.
 
@@ -314,7 +314,7 @@ A tag `DEV` tem **600 leads associados** e `leadsCount` retorna `0`, nos três c
 
 ### 5. `lead_list` perde registros ao paginar
 
-Detalhado no achado #1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
+Detalhado no item #1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
 mas apenas **505 distintos** — 15,8% nunca aparecem, outros vêm repetidos. Acontece com qualquer
 filtro. A ordem é estável para um mesmo `skip`, o que sugere ordenação com empates sem desempate por
 chave única.

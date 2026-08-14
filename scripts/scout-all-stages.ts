@@ -6,9 +6,9 @@
 // Diferenca para scripts/scout.ts: aquele varre o tenant inteiro mas trunca em 100 por
 // stage; este e escopado numa pipeline e pagina de verdade, entao o numero fecha. Alem
 // disso confere o que foi paginado contra o `count` da API e contra os ids distintos —
-// se divergir, e o bug de paginacao (docs/agent/achados-api.md #1).
+// se divergir, e o bug de paginacao (docs/agent/api-datacrazy.md #1).
 //
-// Pipeline resolvida por NOME em runtime — nada de UUID no codigo. Ver achados-api #5.
+// Pipeline resolvida por NOME em runtime — nada de UUID no codigo. Ver api-datacrazy #5.
 //
 // Uso:
 //   npx tsx scripts/scout-all-stages.ts
@@ -70,6 +70,6 @@ for (const s of stages) {
 console.log(`\nTOTAL: ${total} negocios distintos em "${pipeline.name}"`);
 
 if (alertas.length) {
-  console.log("\n⚠ divergencias de paginacao (ver docs/agent/achados-api.md #1):");
+  console.log("\n⚠ divergencias de paginacao (ver docs/agent/api-datacrazy.md #1):");
   for (const a of alertas) console.log(`  ${a}`);
 }

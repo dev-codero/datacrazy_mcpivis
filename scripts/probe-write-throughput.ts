@@ -4,7 +4,7 @@
 //
 // Responde a pergunta "criar N negocios pelo MCP e mais rapido que pelo REST?" com
 // numero medido, em vez de extrapolar do rate limit de tools/list (rota protocolar,
-// que nao toca banco — ver docs/agent/achados-api.md).
+// que nao toca banco — ver docs/agent/api-datacrazy.md).
 //
 // SEGURANCA:
 //   - so opera em leads que tenham a tag alvo (default DEV)

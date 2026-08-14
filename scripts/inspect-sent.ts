@@ -7,7 +7,7 @@
 // mesmos nomes de stage. Se mudar o mapeamento la, mude aqui junto.
 //
 // Pipeline e stages resolvidos por NOME em runtime — nada de UUID no codigo.
-// Ver docs/agent/achados-api.md secao 5.
+// Ver docs/agent/api-datacrazy.md secao 5.
 //
 // Uso:
 //   npx tsx scripts/inspect-sent.ts                       # os 10 primeiros do state

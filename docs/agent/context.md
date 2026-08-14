@@ -323,6 +323,7 @@ teste impede que ele fique para trás de novo (ficou preso em `2024-11-05` até 
 
 ## Onde encontrar o quê
 
+- Comportamento real da API (limites, bugs, medições): [`api-datacrazy.md`](api-datacrazy.md)
 - Regras permanentes (toolbox, infra, memory policy): `../../AGENTS.md`
 - Uso humano/operacional: `../../README.md`
 - Convenções por camada: `.claude/skills/`

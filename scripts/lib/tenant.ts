@@ -7,7 +7,7 @@
 // volta vazia, o loop nao entra, o script termina "com sucesso" sem ter feito nada.
 // Por isso tudo aqui falha ALTO (exit 1) listando o que existe de verdade.
 //
-// Ver docs/agent/achados-api.md secao 5.
+// Ver docs/agent/api-datacrazy.md secao 5.
 
 import type { McpClient } from "../../src/mcp-client.js";
 

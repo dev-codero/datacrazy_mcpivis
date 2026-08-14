@@ -7,7 +7,7 @@
 // tem telefone/gclid preenchidos ou se a planilha vai chegar cheia de buraco.
 //
 // Pipeline e stages sao resolvidos por NOME em runtime — nada de UUID no codigo.
-// Ver docs/agent/achados-api.md secao 5.
+// Ver docs/agent/api-datacrazy.md secao 5.
 //
 // Uso:
 //   npx tsx scripts/scout-batches.ts                                # todas as stages, 5 por stage
