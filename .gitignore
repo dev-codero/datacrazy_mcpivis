@@ -4,8 +4,26 @@ dist/
 *.local
 .DS_Store
 
+# Artefatos de planejamento spec-driven (movidos pro repo do produto novo quando ele nascer)
+.spec-workflow/
+
+# Config MCP local com caminho absoluto do usuário
+.mcp.json
+
+# Cache local do Serena (indexação de símbolos) — por máquina, não versionar
+.serena/
+
 # Dados locais de importação/exportação — não commitar planilhas reais nem relatórios com dados de CRM
 input/
 reports/
 data/
 tmp/
+
+# Estado de sincronização n8n — contém IDs de leads reais e nomes de planilhas de cliente
+.sync-state.json
+
+# Saída de testes
+coverage/
+
+# Toolbox pessoal do Claude Code (agents/commands/skills genericos, nao especificos deste projeto)
+.claude/

@@ -23,16 +23,35 @@ import { join } from "node:path";
 const cfg = loadConfig();
 const mcp = new McpClient(cfg);
 
-const PIPELINE_VENDAS = "67d29a78-087a-41cd-8b9a-e18053a04758";
 const PAGE = 50;
 const N8N_DELAY_MS = 1100; // ~55 req/min, abaixo do limite de 60 do Google Sheets
 const STATE_FILE = join(process.cwd(), ".sync-state.json");
 
-// Mapeamento: stageId -> {etapa, planilha}
-const STAGE_TO_PLAN = new Map<string, { etapa: string; planilha: string }>([
-  ["cfc192bd-9a14-4a68-8d07-d74a83f7199f", { etapa: "Orcamento Enviado", planilha: "NOVA_LUZ_LEAD_QUALIFICADO" }], // Orcamento
-  ["33b14c90-4d8a-45c8-b98a-12770ead38b6", { etapa: "Convertido", planilha: "NOVA_LUZ_LEAD_CONVERTIDO" }], // Finalizado
+// IDs sao POR TENANT — um UUID hardcoded aqui quebra em silencio em qualquer outro
+// tenant ou depois que alguem recria a pipeline. Resolvemos por NOME em runtime.
+//
+// Sobrescreva com env var ou flag quando os nomes forem outros:
+//   SYNC_PIPELINE="Vendas"  npx tsx scripts/sync-batch.ts
+//   npx tsx scripts/sync-batch.ts --pipeline="Trafego Pago Eduardo"
+const PIPELINE_NOME =
+  process.argv.find((a) => a.startsWith("--pipeline="))?.split("=").slice(1).join("=") ??
+  process.env.SYNC_PIPELINE ??
+  "Vendas";
+
+// Mapeamento por NOME do stage -> {etapa, planilha}.
+const STAGE_NOME_TO_PLAN = new Map<string, { etapa: string; planilha: string }>([
+  ["Orcamento", { etapa: "Orcamento Enviado", planilha: "NOVA_LUZ_LEAD_QUALIFICADO" }],
+  ["Finalizado", { etapa: "Convertido", planilha: "NOVA_LUZ_LEAD_CONVERTIDO" }],
 ]);
+
+/** Compara nomes ignorando caixa, acento e espaco sobrando. */
+function norm(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 // === args ===
 const args = process.argv.slice(2);
@@ -46,7 +65,7 @@ const batchPauseEvery = Number(args.find((a) => a.startsWith("--batch="))?.split
 const batchPauseMs = Number(args.find((a) => a.startsWith("--pause="))?.split("=")[1] ?? 5000);
 
 console.log(`Mode:           ${dryRun ? "DRY-RUN" : "REAL"}`);
-console.log(`Pipeline:       Vendas (${PIPELINE_VENDAS})`);
+console.log(`Pipeline:       ${PIPELINE_NOME} (resolvido em runtime)`);
 console.log(`Limit/stage:    ${limitPerStage === Infinity ? "all" : limitPerStage}`);
 console.log(`Status filter:  ${statusFilter ?? "(none)"}`);
 console.log(`Stages:         ${onlyStages.length ? onlyStages.join(", ") : "Orcamento + Finalizado"}`);
@@ -123,14 +142,50 @@ interface StageSummary {
 const summaries: StageSummary[] = [];
 const t0 = Date.now();
 
-const stagesResp = (await mcp.callTool("pipeline_stage_list", { pipelineId: PIPELINE_VENDAS })) as {
+// === resolucao de pipeline e stages por nome ===
+//
+// Falha ALTO se nao achar. A versao anterior usava UUID fixo: quando a pipeline
+// nao existia no tenant, o loop simplesmente nao entrava e o script terminava
+// "com sucesso" sem sincronizar nada.
+const pipelinesResp = (await mcp.callTool("pipeline_list", { limit: 200 })) as {
   data?: Array<{ id: string; name: string }>;
 };
-const stageNameById = new Map((stagesResp.data ?? []).map((s) => [s.id, s.name]));
+const pipelines = pipelinesResp.data ?? [];
+const pipeline = pipelines.find((p) => norm(p.name) === norm(PIPELINE_NOME));
 
-for (const [stageId, plan] of STAGE_TO_PLAN) {
-  if (onlyStages.length && !onlyStages.includes(stageId)) continue;
-  const stageName = stageNameById.get(stageId) ?? stageId;
+if (!pipeline) {
+  console.error(`\n✗ pipeline "${PIPELINE_NOME}" nao existe neste tenant.`);
+  console.error(`  disponiveis: ${pipelines.map((p) => p.name).join(" | ") || "(nenhuma)"}`);
+  console.error(`  use --pipeline="<nome>" ou a env SYNC_PIPELINE.`);
+  process.exit(1);
+}
+console.log(`Pipeline resolvida: ${pipeline.name} → ${pipeline.id}`);
+
+const stagesResp = (await mcp.callTool("pipeline_stage_list", { pipelineId: pipeline.id, limit: 200 })) as {
+  data?: Array<{ id: string; name: string }>;
+};
+const stages = stagesResp.data ?? [];
+
+// Resolve cada nome configurado para o id real deste tenant.
+const alvos: Array<{ stageId: string; stageName: string; plan: { etapa: string; planilha: string } }> = [];
+const naoEncontrados: string[] = [];
+
+for (const [nomeConfigurado, plan] of STAGE_NOME_TO_PLAN) {
+  const stage = stages.find((s) => norm(s.name) === norm(nomeConfigurado));
+  if (stage) alvos.push({ stageId: stage.id, stageName: stage.name, plan });
+  else naoEncontrados.push(nomeConfigurado);
+}
+
+if (naoEncontrados.length) {
+  console.error(`\n✗ stage(s) nao encontrado(s) em "${pipeline.name}": ${naoEncontrados.join(", ")}`);
+  console.error(`  stages existentes: ${stages.map((s) => s.name).join(" | ") || "(nenhum)"}`);
+  process.exit(1);
+}
+console.log(`Stages resolvidos:  ${alvos.map((a) => `${a.stageName}→${a.stageId.slice(0, 8)}…`).join("  ")}`);
+
+for (const { stageId, stageName, plan } of alvos) {
+  // --stage= continua aceitando id, e agora tambem nome.
+  if (onlyStages.length && !onlyStages.some((s) => s === stageId || norm(s) === norm(stageName))) continue;
 
   console.log(`\n--- ${stageName} -> ${plan.planilha} ---`);
   const allBusinesses = await fetchAllByStage(stageId);

@@ -7,7 +7,9 @@ const schema = {
   action: z.enum(["list", "get"]).describe("Operacao: list (todos do scope) ou get (por id)"),
   scope: z
     .enum(["crm", "multi"])
-    .describe("Tipo de atendente: crm (vendedores do CRM) ou multi (atendentes do multiatendimento)"),
+    .describe(
+      "Tipo de atendente: crm (vendedores do CRM) ou multi (atendentes do multiatendimento). Obrigatorio em todas as actions.",
+    ),
   id: z.string().optional().describe("[get] ID do atendente"),
 };
 
