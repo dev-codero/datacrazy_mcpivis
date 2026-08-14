@@ -251,6 +251,43 @@ Medido em 2026-06-23 com burst de `tools/list` (rota protocolar, não toca CRM).
 - Sem `429`, sem `Retry-After`, sem degradação de latência.
 - **Não remedido em 2026-08-13**: o token atual não tem MCP habilitado (ver abaixo).
 
+### Escrita: MCP vs REST
+
+Medido criando e apagando 500 negócios na pipeline MCP DEV, sobre os 600 leads de teste.
+
+| Operação | Caminho | Taxa | 500 registros |
+|---|---|---:|---:|
+| Criar | MCP `business_create` | **4,60/s** (276/min) | **1,8 min** |
+| Apagar | REST `DELETE /businesses/{id}` | 0,83/s (50/min) | 10,0 min |
+
+Nenhum `429` do MCP em 500 escritas sequenciais — **o teto de escrita do MCP continua sem ser
+encontrado**. A taxa de 4,60/s é o que se consegue com chamadas em série (uma espera a outra), não
+o limite do serviço.
+
+⚠️ **Não extrapole de amostra pequena.** Uma rodada de 20 deu 7,16/s; a de 500 deu 4,60/s — 36% mais
+lenta. Estimar 500 a partir de 20 erra por larga margem.
+
+**O gargalo é a exclusão.** O MCP não expõe `business_delete` : as tools de negócio são
+`create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`, `lose`, `update_attendant`,
+`add_product`, `remove_product`, `update_total`. Apagar só pelo REST, e aí valem os 60 req/min.
+
+Consequência prática: criar em massa é barato, desfazer é caro. Criar 5.000 negócios levaria ~18 min;
+apagá-los, ~100 min.
+
+**Como reproduzir**
+
+```bash
+npx tsx scripts/probe-write-throughput.ts --n 20     # validação
+npx tsx scripts/probe-write-throughput.ts --n 500
+npx tsx scripts/probe-write-throughput.ts --limpar   # se algo ficar pendente
+```
+
+O script grava os ids criados em `tmp/negocios-criados.json` **antes** de seguir, então a limpeza
+sobrevive a Ctrl-C, queda de rede ou `429`. Ele se recusa a criar se houver pendências de uma
+execução anterior.
+
+---
+
 ### Rotas ainda não medidas
 
 `GET /api/v1/leads?take=100` paginado (rota pesada de banco). O endpoint **não aceita filtro por

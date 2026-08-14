@@ -8,25 +8,25 @@
 
 ## Placar
 
-| # | Item | Severidade | Status |
+| Item | Severidade | Status | Detalhe |
 |---|---|---|---|
-| 1 | `lead_list` perde registros ao paginar com `skip`/`limit` | **Alta** | aberto |
-| 2 | `lead_list` devolve `[]` em silêncio quando `limit > 1000` | **Alta** | aberto |
-| 3 | `lead_list` não devolve `count` — impossível detectar o #1 | Média | aberto |
-| 4 | REST limita a 60 req/min; `DataCrazyClient` não trata `429` | **Alta** | aberto (nosso) |
-| 5 | IDs de pipeline/stage hardcoded quebram entre tenants | **Alta** | ✅ corrigido |
-| 6 | `check-env.ts` imprime 20 chars do token | Média | aberto (nosso) |
-| 7 | `DataCrazyClient` quebrava em `204 No Content` — todo delete reportava erro | **Alta** | ✅ corrigido |
-| 8 | MCP não expõe `business_delete` — exclusão só pelo REST, no gargalo | Média | aberto |
-| 9 | `McpClient` engolia erro de aplicação vindo no payload de sucesso | **Alta** | ✅ corrigido |
-| 10 | Tipo errado em `tagIds` devolve 500 em vez de 400 | Média | aberto |
-| 11 | `tag_update` sem `name` dá "Tag with the same name already exists" | Média | aberto |
-| 12 | `leadsCount` sempre 0 (tag com 600 leads reporta zero) | Baixa | aberto |
-| 13 | Atraso de propagação escrita → listagem do MCP (>20s) | Média | aberto |
-| — | Tag/atendente/associação no lead funcionam nos dois sentidos | — | ✅ verificado |
-| — | `business_list_by_stage` pagina corretamente | — | ✅ verificado íntegro |
-| — | Importação de 600 leads preservou tudo | — | ✅ verificado |
-| — | Escrita: MCP 4,6/s vs REST 0,83/s | — | ✅ medido |
+| `lead_list` perde registros ao paginar com `skip`/`limit` | **Alta** | aberto | §1 · suporte §5 |
+| `lead_list` devolve `[]` em silêncio quando `limit > 1000` | **Alta** | aberto | §2 · suporte §6 |
+| `lead_list` não devolve `count` — impossível detectar o primeiro | Média | aberto | §3 · suporte §7 |
+| IDs de pipeline/stage hardcoded quebram entre tenants | **Alta** | ✅ corrigido | §4 |
+| `check-env.ts` imprime 20 chars do token | Média | aberto (nosso) | §5 |
+| `DataCrazyClient` quebrava em `204 No Content` — todo delete reportava erro | **Alta** | ✅ corrigido | §6 |
+| `McpClient` engolia erro de aplicação vindo no payload de sucesso | **Alta** | ✅ corrigido | suporte §1 |
+| Tipo errado em `tagIds` devolve 500 em vez de 400 | Média | aberto | suporte §2 |
+| `tag_update` sem `name` dá "Tag with the same name already exists" | Média | aberto | suporte §3 |
+| `leadsCount` sempre 0 (tag com 600 leads reporta zero) | Baixa | aberto | suporte §4 |
+| MCP não expõe `business_delete` — exclusão só existe no REST | Média | aberto | suporte §8 |
+| `tag_create` do MCP não aceita cor | Baixa | aberto | suporte §9 |
+| Atraso de propagação escrita → listagem do MCP (>20s) | Média | aberto | suporte §10 |
+| `attendant_list` expõe `id` e `userId`; as escritas querem o `userId` | Baixa | aberto | suporte §11 |
+| Tag/atendente/associação no lead funcionam nos dois sentidos | — | ✅ verificado | — |
+| `business_list_by_stage` pagina corretamente | — | ✅ verificado | — |
+| Importação de 600 leads preservou tudo | — | ✅ verificado | — |
 
 ---
 
@@ -58,7 +58,7 @@ diferentes — assinatura de ordenação com empates. Numa importação em lote 
 colidem, e o `OFFSET` dentro do grupo empatado não é determinístico. Não deu para confirmar: o payload
 do lead expõe só `id, name, phone, email, company, tags` — sem `createdAt`.
 
-**Workaround.** Ler em página única com `limit: 1000`. Ver o #2 para o teto.
+**Workaround.** Ler em página única com `limit: 1000`. Ver a §2 para o teto.
 
 ---
 
@@ -84,7 +84,7 @@ for (const limit of [1000,1001]) console.log(limit, ((await m.callTool("lead_lis
 
 ---
 
-## 3. Consequência combinada do #1 + #2
+## 3. Consequência combinada de §1 + §2
 
 **Acima de 1000 leads num filtro não existe caminho confiável de leitura completa.** A página única bate
 no teto; a paginação perde registros. E como o `lead_list` devolve só `{ data: [...] }` — **sem `count`** —
@@ -99,27 +99,7 @@ nenhuma fatia volte com exatamente 1000.
 
 ---
 
-## 4. REST: 60 req/min, e o nosso cliente ignora isso
-
-Medido em três execuções: 60 requisições passam, a 61ª toma `429`, `Retry-After` fecha os 60s da janela.
-Cota **global por token**, não por rota. Taxa sustentável ≈ **1 rps**.
-
-O gateway MCP é ~20× mais folgado (≥1200 req/min) — **não extrapole um do outro**.
-
-O `DataCrazyClient` (`src/client.ts`) hoje não tem throttle nem tratamento de `429`: ele simplesmente
-lança `DataCrazy API error 429`. 17 das 18 tools passam por ele.
-
-**Como reproduzir**
-
-```bash
-npx tsx scripts/probe-rate-limit.ts
-```
-
-**A corrigir.** Backoff que respeite o `Retry-After` no `DataCrazyClient`, e throttle nos scripts de lote.
-
----
-
-## 5. IDs hardcoded quebram entre tenants — corrigido
+## 4. IDs hardcoded quebram entre tenants — corrigido
 
 **IDs de pipeline e stage são por tenant.** Qualquer UUID fixo no código quebra em outro tenant, ou
 depois que alguém recria a pipeline. O `sync-batch.ts` tinha três:
@@ -202,7 +182,7 @@ distintos). A suspeita inicial de que faltariam leads estava errada.
 
 ---
 
-## 6. `check-env.ts` vaza o token
+## 5. `check-env.ts` vaza o token
 
 ```ts
 console.log("apiToken prefix:", cfg.apiToken.slice(0, 20));
@@ -213,7 +193,7 @@ tamanho + tipo (`dc_` vs JWT) + `sha256` truncado.
 
 ---
 
-## 7. `DataCrazyClient` quebrava em `204 No Content` — corrigido
+## 6. `DataCrazyClient` quebrava em `204 No Content` — corrigido
 
 O DataCrazy responde `204` sem corpo nos `DELETE` bem-sucedidos. O cliente chamava `res.json()`
 direto, que lança `Unexpected end of JSON input`. O erro subia como se a operação tivesse falhado —
@@ -229,43 +209,6 @@ deixado o bug escondido.
 
 **Correção.** `parseBody()` em `src/client.ts` tolera `204`, corpo vazio e corpo não-JSON.
 Nove testes de regressão em `tests/client.test.ts`.
-
----
-
-## 8. Escrita: MCP é ~5,5× mais rápido, mas a volta é pelo gargalo
-
-Medido criando e apagando 500 negócios na pipeline MCP DEV, sobre os 600 leads de teste.
-
-| Operação | Caminho | Taxa | 500 registros |
-|---|---|---:|---:|
-| Criar | MCP `business_create` | **4,60/s** (276/min) | **1,8 min** |
-| Apagar | REST `DELETE /businesses/{id}` | 0,83/s (50/min) | 10,0 min |
-
-Nenhum `429` do MCP em 500 escritas sequenciais — **o teto de escrita do MCP continua sem ser
-encontrado**. A taxa de 4,60/s é o que se consegue com chamadas em série (uma espera a outra), não
-o limite do serviço.
-
-⚠️ **Não extrapole de amostra pequena.** Uma rodada de 20 deu 7,16/s; a de 500 deu 4,60/s — 36% mais
-lenta. Estimar 500 a partir de 20 erra por larga margem.
-
-**O gargalo é a exclusão.** O MCP não expõe `business_delete` (item #8): as tools de negócio são
-`create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`, `lose`, `update_attendant`,
-`add_product`, `remove_product`, `update_total`. Apagar só pelo REST, e aí valem os 60 req/min.
-
-Consequência prática: criar em massa é barato, desfazer é caro. Criar 5.000 negócios levaria ~18 min;
-apagá-los, ~100 min.
-
-**Como reproduzir**
-
-```bash
-npx tsx scripts/probe-write-throughput.ts --n 20     # validação
-npx tsx scripts/probe-write-throughput.ts --n 500
-npx tsx scripts/probe-write-throughput.ts --limpar   # se algo ficar pendente
-```
-
-O script grava os ids criados em `tmp/negocios-criados.json` **antes** de seguir, então a limpeza
-sobrevive a Ctrl-C, queda de rede ou `429`. Ele se recusa a criar se houver pendências de uma
-execução anterior.
 
 ---
 
@@ -312,23 +255,23 @@ de nome — manda o desenvolvedor investigar a coisa errada. Vale para MCP e RES
 A tag `DEV` tem **600 leads associados** e `leadsCount` retorna `0`, nos três caminhos de leitura
 (MCP com `search`, MCP sem `search`, e REST `/api/v1/tags`).
 
-### 5. `lead_list` perde registros ao paginar
+### 4. `lead_list` perde registros ao paginar
 
-Detalhado no item #1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
+Detalhado na §1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
 mas apenas **505 distintos** — 15,8% nunca aparecem, outros vêm repetidos. Acontece com qualquer
 filtro. A ordem é estável para um mesmo `skip`, o que sugere ordenação com empates sem desempate por
 chave única.
 
 *Sugestão:* ordenar por uma chave única (ex: `id`) como desempate.
 
-### 6. `lead_list` com `limit > 1000` devolve lista vazia
+### 5. `lead_list` com `limit > 1000` devolve lista vazia
 
 Sem erro e sem clamp — indistinguível de "não há nenhum lead". Combinado com o #5, **não existe
 caminho confiável para ler mais de 1000 leads de um filtro**.
 
 *Sugestão:* clampar em 1000 e sinalizar, ou responder 400.
 
-### 7. `lead_list` não devolve `count`
+### 6. `lead_list` não devolve `count`
 
 `business_list_by_stage` devolve `count`, e é isso que permite validar uma varredura. O `lead_list`
 devolve só `{ data: [...] }`, então o chamador não tem como perceber que perdeu registros.
@@ -337,8 +280,7 @@ devolve só `{ data: [...] }`, então o chamador não tem como perceber que perd
 
 As tools de negócio cobrem `create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`,
 `lose`, `update_attendant`, `add_product`, `remove_product`, `update_total` — nenhuma apaga. A
-exclusão só sai pelo REST, que tem cota de 60 req/min. Resultado: criar 500 negócios leva 1,8 min e
-apagá-los leva 10 min.
+exclusão só sai pelo REST. Ver a seção de capacidade em `context.md` para os números.
 
 ### 9. `tag_create` do MCP não aceita cor
 
@@ -376,11 +318,9 @@ silencioso. Uma nota na descrição do parâmetro resolveria.
 - [ ] Paginação de `conversation_messages_list`, `product_list`, `tag_list` — o bug do #1 aparece nelas?
 - [ ] `GET /api/v1/leads` paginado no REST — tem o mesmo defeito do `lead_list` do MCP?
 - [ ] Writes na pipeline MCP DEV (criar negócio, mover stage) — nada de write foi testado ainda.
-- [ ] Rate limit das rotas pesadas de banco (`probe-rate-limit.ts --heavy`) — não executado.
 - [ ] `n8n_sync` ponta a ponta com `dryRun: false` — nunca disparado.
 
 ## Limpeza dos dados de teste
 
 Os 600 leads têm a tag `DEV` (`3d9cc9f4-60d5-4e0b-848c-335ba48290b4`) e e-mails em `@example.com`.
-Para remover, filtrar por essa tag. **Não existe bulk delete nas tools** — é `lead_delete` um a um,
-e a 60 req/min do REST isso leva ~10 min. Via MCP é mais rápido.
+Para remover, filtrar por essa tag. **Não existe bulk delete nas tools** — é `lead_delete` um a um.
