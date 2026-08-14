@@ -24,6 +24,8 @@
 | `tag_create` do MCP não aceita cor | Baixa | aberto | suporte §9 |
 | Atraso de propagação escrita → listagem do MCP (>20s) | Média | aberto | suporte §10 |
 | `attendant_list` expõe `id` e `userId`; as escritas querem o `userId` | Baixa | aberto | suporte §11 |
+| `product_create` exige `id_sku` que o schema diz ser opcional | Média | aberto | suporte §12 |
+| Erro de validação vaza trace do Prisma no corpo | Média | aberto | suporte §13 |
 | Tag/atendente/associação no lead funcionam nos dois sentidos | — | ✅ verificado | — |
 | `business_list_by_stage` pagina corretamente | — | ✅ verificado | — |
 | Importação de 600 leads preservou tudo | — | ✅ verificado | — |
@@ -301,6 +303,36 @@ O objeto tem os dois campos, e `lead_update_attendant` só aceita o `userId`
 (`jO0w2anSFFZK060L5zXRgmdzIz73`), não o `id` (`8b118632-…`). Passar o `id` cai no erro do item #1 —
 silencioso. Uma nota na descrição do parâmetro resolveria.
 
+### 12. `product_create` exige `id_sku`, que o schema declara como opcional
+
+```
+inputSchema.required = ["name", "price"]
+```
+
+Mas criar com apenas `name` e `price` devolve **`Internal server error`**. Só funciona incluindo
+`id_sku`, que o schema apresenta como campo comum:
+
+| Parâmetros | Resultado |
+|---|---|
+| `name` + `price` | 500 |
+| `name` + `price` + `id_sku` | ✅ criado |
+
+*Sugestão:* declarar `id_sku` como obrigatório no schema, ou aceitar sua ausência.
+
+### 13. Erro de validação vaza trace interno
+
+O mesmo caso acima, pelo REST (`POST /api/v1/products`), responde com o trace do ORM no corpo:
+
+```
+400 {"message":{"statusCode":500,"message":"Internal server error",
+     "trace":"PrismaClientValidationError: \nInvalid `this.prismaTable().crea…
+```
+
+Além de expor detalhe de implementação (Prisma, nome de método interno), o envelope é
+contraditório: HTTP 400 com `statusCode: 500` no corpo.
+
+*Sugestão:* não devolver trace ao cliente e alinhar o status do envelope com o HTTP.
+
 ---
 
 ## O que já foi verificado como OK
@@ -317,7 +349,7 @@ silencioso. Uma nota na descrição do parâmetro resolveria.
       realmente contorna o #1?
 - [ ] Paginação de `conversation_messages_list`, `product_list`, `tag_list` — o bug do #1 aparece nelas?
 - [ ] `GET /api/v1/leads` paginado no REST — tem o mesmo defeito do `lead_list` do MCP?
-- [ ] Writes na pipeline MCP DEV (criar negócio, mover stage) — nada de write foi testado ainda.
+- [x] Writes na MCP DEV — cobertos por `scripts/smoke-all.ts` (48 chamadas, 48 ok).
 - [ ] `n8n_sync` ponta a ponta com `dryRun: false` — nunca disparado.
 
 ## Limpeza dos dados de teste
