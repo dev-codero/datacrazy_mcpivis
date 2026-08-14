@@ -365,3 +365,4 @@ teste impede que ele fique para trás de novo (ficou preso em `2024-11-05` até 
 - Uso humano/operacional: `../../README.md`
 - Convenções por camada: `.claude/skills/`
 - Histórico de decisões: `decisions.md`
+- Log das sessões de trabalho: [`session-log.md`](session-log.md)

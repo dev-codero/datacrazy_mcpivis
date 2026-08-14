@@ -24,3 +24,6 @@ tmp/
 
 # Saída de testes
 coverage/
+
+# Toolbox pessoal do Claude Code (agents/commands/skills genericos, nao especificos deste projeto)
+.claude/

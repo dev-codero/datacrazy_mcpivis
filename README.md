@@ -1,86 +1,51 @@
-# MCP DataCrazy CRM
+# MCP DataCrazy
 
-Servidor MCP em TypeScript para operar o CRM DataCrazy a partir de clientes como Claude, Cursor, Hermes ou qualquer host compatível com MCP.
+Servidor MCP em TypeScript que dá a um agente de IA acesso operacional ao CRM DataCrazy — leads,
+negócios, conversas, tags, listas, produtos e sincronização com n8n.
 
-O foco deste projeto não é ter pouco arquivo `.ts`; o foco é deixar claro o processo:
-
-1. configurar token e URLs corretas;
-2. subir o servidor MCP local via stdio;
-3. conectar o cliente MCP;
-4. usar as tools para ler/escrever no CRM com segurança;
-5. manter scripts auxiliares separados das tools oficiais.
-
-## Resumo rápido
-
-- Nome do pacote/binário: `mcp-datacrazy`
-- Transporte deste servidor: MCP via `stdio`
-- URL oficial do MCP DataCrazy usada internamente em algumas tools: `https://mcp.g1.datacrazy.io/api/mcp`
-- URL REST legada/default: `https://api.g1.datacrazy.io`
-- Token obrigatório: `DATACRAZY_API_TOKEN`
-- Safe mode default: ligado (`SAFE_MODE=true`)
-- n8n sync default: dry-run ligado (`N8N_DRY_RUN=true`)
-
-Importante: este projeto em si não abre uma URL HTTP local. Ele é um servidor MCP de `stdio`. A URL que importa para o DataCrazy é `DATACRAZY_MCP_URL`, usada pelo cliente interno para chamar o MCP oficial do DataCrazy.
-
-## Como instalar
+Roda via **stdio**: o cliente MCP (Claude Desktop, Cursor, Hermes) sobe o processo e conversa por
+stdin/stdout. **Não expõe URL HTTP local.**
 
 ```bash
-npm install
-cp .env.example .env
-```
-
-Edite `.env` e preencha pelo menos:
-
-```bash
-DATACRAZY_API_TOKEN=seu_jwt_aqui
-```
-
-Defaults já configurados:
-
-```bash
-DATACRAZY_API_URL=https://api.g1.datacrazy.io
-DATACRAZY_MCP_URL=https://mcp.g1.datacrazy.io/api/mcp
-SAFE_MODE=true
-N8N_DRY_RUN=true
-```
-
-## Como rodar em desenvolvimento
-
-```bash
-npm run dev
-```
-
-Como o transporte é `stdio`, o processo fica esperando chamadas MCP pelo stdin/stdout. Rodar manualmente no terminal serve mais para ver se as env vars carregam sem erro.
-
-## Como buildar
-
-```bash
+npm install && cp .env.example .env   # preencha DATACRAZY_API_TOKEN
 npm run build
+npm test                              # 209 testes, offline, não tocam o CRM
 ```
 
-Saída esperada:
+## Configuração
 
-```text
-dist/index.js
-dist/index.d.ts
+Só `DATACRAZY_API_TOKEN` é obrigatório. O resto tem default:
+
+| Variável | Default | Para quê |
+|---|---|---|
+| `DATACRAZY_API_TOKEN` | — | **obrigatório**. JWT ou token `dc_…` |
+| `DATACRAZY_API_URL` | `https://api.g1.datacrazy.io` | REST, usado por 17 das 18 tools |
+| `DATACRAZY_MCP_URL` | `https://mcp.g1.datacrazy.io/api/mcp` | MCP oficial, usado pelo `n8n_sync` |
+| `SAFE_MODE` | `true` | exige `confirm: true` em operação destrutiva |
+| `N8N_WEBHOOK_URL` | webhook atual | integração n8n → Google Sheets |
+| `N8N_DRY_RUN` | `true` | não envia para o n8n, só loga |
+
+`SAFE_MODE` e `N8N_DRY_RUN` só desligam com a string exata `"false"`. Um `0` ou `no` mal digitado
+mantém a proteção ligada — deliberado.
+
+Confira sem revelar o token:
+
+```bash
+npx tsx scripts/check-env.ts
 ```
 
-## Como conectar em um cliente MCP
+## Conectar num cliente MCP
 
-Depois de rodar `npm run build`, configure o cliente MCP para chamar o arquivo gerado via `node`.
-
-Exemplo genérico de configuração MCP:
+Depois do `npm run build`, aponte o cliente para o arquivo gerado:
 
 ```json
 {
   "mcpServers": {
     "datacrazy": {
       "command": "node",
-      "args": ["/Users/artursousa/code/devero/datacrazy_mcpivis/dist/index.js"],
+      "args": ["/caminho/absoluto/para/datacrazy_mcpivis/dist/index.js"],
       "env": {
-        "DATACRAZY_API_TOKEN": "COLE_O_TOKEN_AQUI",
-        "DATACRAZY_API_URL": "https://api.g1.datacrazy.io",
-        "DATACRAZY_MCP_URL": "https://mcp.g1.datacrazy.io/api/mcp",
+        "DATACRAZY_API_TOKEN": "cole_o_token_aqui",
         "SAFE_MODE": "true",
         "N8N_DRY_RUN": "true"
       }
@@ -89,319 +54,135 @@ Exemplo genérico de configuração MCP:
 }
 ```
 
-Se o cliente MCP herdar variáveis do shell ou carregar `.env`, você pode omitir o bloco `env`; mas o jeito mais previsível é declarar ali.
+O bloco `env` do cliente **vence o `.env`**. Se trocar o token no `.env` e o cliente continuar com o
+antigo, é isso.
 
-## Variáveis de ambiente
+## As 18 tools
 
-| Variável | Obrigatória | Default | Uso |
-|---|---:|---|---|
-| `DATACRAZY_API_TOKEN` | sim | nenhum | JWT usado para autenticar no DataCrazy |
-| `DATACRAZY_API_URL` | não | `https://api.g1.datacrazy.io` | REST API legada usada por várias tools |
-| `DATACRAZY_MCP_URL` | não | `https://mcp.g1.datacrazy.io/api/mcp` | MCP JSON-RPC oficial do DataCrazy |
-| `SAFE_MODE` | não | `true` | exige `confirm: true` em operações destrutivas |
-| `N8N_WEBHOOK_URL` | não | webhook atual da Converso/n8n | destino das tools `n8n_sync_*` |
-| `N8N_DRY_RUN` | não | `true` | impede envio real para n8n quando ligado |
+Uma tool por domínio, com um parâmetro `action` escolhendo a operação. O agrupamento é proposital:
+acima de ~30 tools o Claude Desktop liga o modo `tool_search` e esconde tudo atrás de uma busca
+semântica que casa mal.
 
-## URLs importantes
+| Tool | Actions |
+|---|---|
+| `leads` | list, get, create, update, delete |
+| `lead_notes` | list, add, update, delete |
+| `lead_attachments` | list, add, delete |
+| `lead_history` · `lead_activities` · `lead_businesses` | operação única |
+| `businesses` | list, get, create, update, delete |
+| `business_actions` | move, win, lose, restore |
+| `activities` | list, get, create, update, delete |
+| `conversations` | list, messages, send, finish |
+| `pipelines` | list, get, stages |
+| `tags` · `lists` · `products` · `loss_reasons` | list, get, create, update, delete |
+| `attendants` | list, get (`scope: crm\|multi`) |
+| `instances` | list, get |
+| `n8n_sync` | lead_qualificado, lead_convertido |
 
-### MCP oficial DataCrazy
-
-```text
-https://mcp.g1.datacrazy.io/api/mcp
-```
-
-Usada pelo arquivo `src/mcp-client.ts` para chamadas JSON-RPC com streaming SSE.
-
-Headers usados:
-
-```text
-Authorization: Bearer <DATACRAZY_API_TOKEN>
-Content-Type: application/json
-Accept: application/json, text/event-stream
-```
-
-### REST legada DataCrazy
-
-```text
-https://api.g1.datacrazy.io
-```
-
-Usada por `src/client.ts`.
-
-Headers usados pelo cliente local:
-
-```text
-access-token: <DATACRAZY_API_TOKEN>
-Authorization: Bearer <DATACRAZY_API_TOKEN>
-```
-
-Observação: tokens novos com prefixo `dc_` foram validados na REST usando `Authorization: Bearer`. O cliente local envia os dois headers para manter compatibilidade com tokens/fluxos antigos.
-
-### n8n webhook
-
-```text
-https://n8m.conversoai.com.br/webhook/3394ed04-1c67-4bae-89ec-ee71f46b6d95
-```
-
-Usado pela tool `n8n_sync`:
-
-- `n8n_sync({ action: "lead_qualificado", leadId, businessId? })` → planilha `NOVA_LUZ_LEAD_QUALIFICADO`, etapa `Orcamento Enviado`
-- `n8n_sync({ action: "lead_convertido", leadId, businessId? })` → planilha `NOVA_LUZ_LEAD_CONVERTIDO`, etapa `Convertido`
-
-Por padrão fica em dry-run por causa de `N8N_DRY_RUN=true` (a tool só loga o payload).
-
-### Endpoints MCP para uso direto no n8n
-
-Existem dois jeitos de o n8n falar com o DataCrazy via MCP:
-
-1. **Webhook de sync** (acima) — a tool local `n8n_sync` busca o lead/negócio no CRM via MCP oficial e empurra um payload pronto para o webhook n8n/Google Sheets.
-2. **Chamada direta ao MCP oficial** — um node **HTTP Request** no n8n pode chamar `https://mcp.g1.datacrazy.io/api/mcp` diretamente (JSON-RPC, método `tools/call`), sem passar por este servidor local. Útil quando o fluxo do n8n precisa de uma ação que a tool `n8n_sync` não cobre (criar lead, mover negócio de etapa, adicionar tag, etc.).
-
-Documentação completa da opção 2, uma tool por arquivo, em [`n8n/`](n8n/README.md) — **71 tools** do MCP oficial, organizadas por grupo:
-
-| Grupo | Tools | Cobre |
-|---|---:|---|
-| [leads](n8n/leads) | 14 | criar/consultar/atualizar lead, tags, listas, negócios do lead |
-| [businesses](n8n/businesses) | 10 | criar negócio, mover etapa, ganhar/perder, produtos do negócio |
-| [conversations](n8n/conversations) | 5 | enviar mensagem, listar conversas/mensagens |
-| [pipelines](n8n/pipelines) | 6 | pipelines, grupos, etapas |
-| [tags](n8n/tags) | 4 | CRUD de tags |
-| [list](n8n/list) | 4 | CRUD de listas |
-| [products](n8n/products) | 4 | CRUD de produtos |
-| [additional_fields](n8n/additional_fields) | 6 | campos customizados de lead/negócio/empresa |
-| [activities](n8n/activities) | 4 | tipos de atividade |
-| [loss_reason](n8n/loss_reason) | 4 | motivos de perda |
-| [attendants](n8n/attendants) | 2 | consulta de atendentes |
-| [department](n8n/department) | 4 | CRUD de departamentos |
-| [instance](n8n/instance) | 2 | instâncias de WhatsApp/canal |
-| [working_hours](n8n/working_hours) | 2 | horário de funcionamento |
-
-Cada arquivo em `n8n/<grupo>/` traz: configuração do node HTTP Request (method/URL/headers/body), exemplo com valores fixos, exemplo usando dados de node anterior, como interpretar/conferir a resposta, curl para testar fora do n8n, e erros comuns. Comece pelo índice: [`n8n/README.md`](n8n/README.md).
-
-Das tools locais deste servidor (seção seguinte), só a `n8n_sync` usa o MCP oficial internamente — as outras 17 falam com a REST legada (`src/client.ts`).
-
-## Arquitetura
-
-```text
-src/index.ts          entrada do servidor MCP local via stdio
-src/config.ts         valida env vars e defaults de URL/safe mode/n8n
-src/client.ts         cliente REST legado DataCrazy
-src/mcp-client.ts     cliente JSON-RPC para o MCP oficial DataCrazy
-src/safe-mode.ts      bloqueio de operações destrutivas sem confirm:true
-src/tools/*.ts        módulos de tools expostas ao cliente MCP
-scripts/*.ts          scripts exploratórios/operacionais, não são API pública
-```
-
-Fluxo simplificado:
-
-```text
-Cliente MCP (Claude/Cursor/Hermes)
-  -> node dist/index.js via stdio
-    -> tools locais em src/tools
-      -> DataCrazy REST legado ou MCP oficial
-      -> opcionalmente n8n webhook
-```
-
-## Tools disponíveis
-
-Total: **18 tools**, uma por domínio. Cada tool aceita um parâmetro `action` que escolhe a operação. Esse design (bundling) é deliberado — evita que o Claude Desktop ative o modo `tool_search`, que esconde tools individuais atrás de uma busca semântica.
-
-| Tool | Actions | Para que serve |
-|---|---|---|
-| `leads` | list, get, create, update, delete | leads/contatos/clientes/prospects |
-| `lead_notes` | list, add, update, delete | notas/comentários em lead |
-| `lead_attachments` | list, add, delete | anexos/arquivos em lead |
-| `lead_history` | (única) | histórico/timeline de alterações do lead |
-| `lead_activities` | (única) | atividades vinculadas ao lead |
-| `lead_businesses` | (única) | negócios vinculados ao lead |
-| `businesses` | list, get, create, update, delete | negócios/deals/oportunidades |
-| `business_actions` | move, win, lose, restore | mover etapa, ganhar, perder, restaurar |
-| `activities` | list, get, create, update, delete | atividades/tarefas/ligações |
-| `conversations` | list, messages, send, finish | conversas/atendimentos |
-| `pipelines` | list, get, stages | pipelines/funis e etapas (read-only) |
-| `tags` | list, get, create, update, delete | tags/etiquetas/categorias |
-| `lists` | list, get, create, update, delete | listas/segmentos |
-| `products` | list, get, create, update, delete | produtos/serviços/cursos |
-| `loss_reasons` | list, get, create, update, delete | motivos de perda |
-| `attendants` | list, get (com `scope: crm \| multi`) | atendentes/vendedores (read-only) |
-| `instances` | list, get | instâncias de conexão (WhatsApp etc, read-only) |
-| `n8n_sync` | lead_qualificado, lead_convertido | sync com planilhas Google via n8n |
-
-Exemplo de chamada:
-
-```jsonc
-// Listar leads
-{ "name": "leads", "arguments": { "action": "list", "take": 50 } }
-
-// Criar lead
-{ "name": "leads", "arguments": { "action": "create", "name": "Ana", "phone": "11999999999" } }
-
-// Deletar lead (precisa confirm em SAFE_MODE)
-{ "name": "leads", "arguments": { "action": "delete", "id": "...", "confirm": true } }
-
-// Mover negócios para outra etapa
-{ "name": "business_actions", "arguments": { "action": "move", "ids": ["a","b"], "destinationStageId": "..." } }
-```
+Detalhe de cada uma, e o pattern de bundling para criar novas:
+[`docs/agent/context.md`](docs/agent/context.md).
 
 ## Safe mode
 
-`SAFE_MODE=true` é o padrão.
-
-Quando ligado, operações destrutivas exigem o argumento:
+`SAFE_MODE=true` é o default. Operação destrutiva exige `confirm: true` na chamada:
 
 ```json
-{ "confirm": true }
+{ "action": "delete", "id": "…", "confirm": true }
 ```
 
-Use isso principalmente em:
+Sem o `confirm`, a tool devolve um aviso e **não chega a chamar a API**. Vale para `delete` de leads,
+negócios, tags, listas, produtos, motivos de perda, notas e anexos; para `business_actions.lose`; e
+para `conversations.finish`.
 
-- qualquer `action: "delete"` (em `leads`, `businesses`, `tags`, `lists`, `products`, `loss_reasons`, `lead_notes`, `lead_attachments`, `activities`)
-- `business_actions({ action: "lose", ... })`
-- `conversations({ action: "finish", ... })`
-- `n8n_sync` quando for envio real (`dryRun: false`)
+O `n8n_sync` tem uma segunda trava: `N8N_DRY_RUN=true` monta o payload e loga, sem enviar.
 
-Para desligar globalmente:
+## Testes
 
 ```bash
-SAFE_MODE=false
+npm test           # 209 testes offline — fetch mockado, não tocam o CRM
+npm run typecheck  # src, tests e scripts
+npm run test:e2e   # sobe o dist/ via stdio e valida o handshake MCP
 ```
 
-Só faça isso em ambiente controlado.
-
-## Processo recomendado de uso
-
-1. Sempre começar consultando dados, nunca alterando direto.
-2. Para leads/businesses, buscar por telefone/email/nome antes de criar algo novo.
-3. Para mover/ganhar/perder negócio, confirmar IDs e etapa/pipeline antes.
-4. Para deletes/finalizações/perdas, manter `SAFE_MODE=true` e passar `confirm:true` só quando tiver certeza.
-5. Para n8n, testar primeiro com `N8N_DRY_RUN=true`; só depois usar `N8N_DRY_RUN=false`.
-6. Rodar `npm run build` antes de apontar um cliente MCP para `dist/index.js`.
-
-## Scripts úteis
-
-Os scripts em `scripts/` são auxiliares de operação/debug. Eles podem mudar conforme a exploração da API.
-
-Exemplos:
+Contra a API real (exigem `.env` com token válido, e **leem** por padrão):
 
 ```bash
-npx tsx scripts/check-env.ts
-npx tsx scripts/list-tools.ts
-npx tsx scripts/probe-api.ts
-npx tsx scripts/scout.ts                                    # pipelines + stages do tenant
-npx tsx scripts/scout-all-stages.ts --pipeline="MCP DEV"    # contagem paginada por stage
-npx tsx scripts/scout-batches.ts --pipeline="MCP DEV"       # amostra dos campos do sync
-npx tsx scripts/inspect-sent.ts --limit=10                  # auditoria do .sync-state.json
+npx tsx scripts/smoke-read.ts --tag DEV     # leitura pelos dois clientes
+npx tsx scripts/smoke-all.ts                # 48 chamadas, cria e apaga o que usa
+npx tsx scripts/smoke-write.ts              # tags, atendente, associação
 ```
 
-Os scripts que tocam pipeline/stage resolvem tudo por **nome** em runtime (`--pipeline="<nome>"`
-ou a env `SYNC_PIPELINE`) e falham alto listando o que existe. Não hardcode UUID: ids de pipeline
-e stage são por tenant.
+O `smoke-all` e o `smoke-write` **escrevem** no CRM, mas limpam tudo que criam e não disparam
+mensagem nem envio ao n8n.
 
-Regra: se for comportamento oficial para o cliente MCP, deve virar tool em `src/tools/`. Se for exploração/debug pontual, fica em `scripts/`.
+## Scripts
 
-## Importar produtos por planilha
+| Script | Para quê |
+|---|---|
+| `check-env.ts` | confere o `.env` sem revelar o token |
+| `smoke-read.ts` · `smoke-write.ts` · `smoke-all.ts` | validação contra a API real |
+| `probe-rate-limit.ts` · `probe-write-throughput.ts` | medição de capacidade |
+| `gen-leads-teste.ts` | gera planilha de leads fictícios (xlsx + csv) |
+| `import-products.ts` | importa produtos de planilha, com dry-run |
+| `sync-batch.ts` | sincroniza negócios → n8n, idempotente |
+| `scout*.ts` · `inspect-sent.ts` | exploração e auditoria |
 
-O fluxo de importação de produtos fica em script operacional, não em tool MCP, para manter dry-run, relatório e arquivo local fáceis de auditar.
-
-Script:
+Scripts resolvem pipeline e stage **por nome**, nunca por UUID — IDs são por tenant:
 
 ```bash
-scripts/import-products.ts
+npx tsx scripts/sync-batch.ts --pipeline="MCP DEV"
+SYNC_PIPELINE="Vendas" npx tsx scripts/sync-batch.ts
 ```
 
-Planilhas reais devem ficar em `input/`, que é ignorado pelo git:
+Se o nome não existir, o script falha listando o que existe. Não segue em silêncio.
 
-```text
-input/PRODUTOS.xlsx
-```
+## Armadilhas conhecidas
 
-Relatórios reais devem ficar em `reports/`, também ignorado pelo git.
+Antes de escrever código contra esta API, leia
+[`docs/agent/api-datacrazy.md`](docs/agent/api-datacrazy.md). As que mais mordem:
 
-Dry-run com API, sem criar/atualizar produtos:
-
-```bash
-npx tsx scripts/import-products.ts --file input/PRODUTOS.xlsx --report reports/products-import-dry-run.json
-```
-
-Envio real, somente depois de revisar o dry-run:
-
-```bash
-npx tsx scripts/import-products.ts --file input/PRODUTOS.xlsx --send --report reports/products-import-send-report.json
-```
-
-Comportamento padrão:
-
-- aceita CSV e XLSX;
-- se XLSX não tiver cabeçalho, assume coluna A = `name`, B = `id_sku`, C = `price`;
-- dry-run é o default;
-- produtos existentes são pulados por padrão;
-- atualização de existentes exige `--update-existing`;
-- escrita real exige `--send`;
-- planilhas reais e relatórios não devem ser commitados.
-
-Regras específicas usadas na planilha atual:
-
-- preço `*` vira `1`;
-- preço com barra, exemplo `350/450`, vira dois produtos: `NOME 01` com o primeiro preço e `NOME 02` com o segundo preço;
-- quando uma linha é dividida em dois produtos, o SKU também recebe sufixo `-01` e `-02`.
-
-Exemplo fake versionado:
-
-```text
-docs/examples/products-import.example.csv
-```
-
-## Convenções do projeto
-
-- Nome de tool em `snake_case`.
-- Descrições das tools em português, porque o uso real é em pt-BR.
-- Um arquivo por domínio/recurso dentro de `src/tools/`.
-- Não commitar `.env` nem tokens.
-- Não tratar `scripts/` como API estável.
-- Preferir documentação operacional simples a excesso de abstração.
+- **`lead_list` perde ~16% dos registros ao paginar** com `skip`/`limit`. Leia em página única com
+  `limit: 1000`.
+- **`limit > 1000` devolve lista vazia**, sem erro — indistinguível de "não há nenhum lead".
+- **O REST limita a 60 requisições por minuto** por token. O `DataCrazyClient` já trata o `429`
+  respeitando o `Retry-After`, mas operação de lote precisa contar com a espera.
+- **Erro de aplicação chega com HTTP 200** e corpo `{"error": "..."}`. O `McpClient` detecta e lança;
+  se você chamar a API por fora, confira o payload.
 
 ## Troubleshooting
 
-### Erro: `DATACRAZY_API_TOKEN environment variable is required`
+**`DATACRAZY_API_TOKEN environment variable is required`** — `.env` ausente, ou o cliente MCP não
+passou a variável no bloco `env`.
 
-Preencha `.env` ou declare a env var no cliente MCP.
+**O cliente MCP não lista as tools** — rode `npm run build` e confirme que o caminho no config aponta
+para o `dist/index.js` **absoluto**. Depois `npm run test:e2e`, que sobe o servidor do mesmo jeito que
+o cliente faria.
 
-### Cliente MCP não encontra tools
+**`Unexpected token '◇'` no cliente** — algo escreveu no stdout fora do JSON-RPC. Em `src/` use
+`console.error`; o teste `tests/stdio-purity.test.ts` guarda isso.
 
-Rode:
+**Operação destrutiva bloqueada** — é o `SAFE_MODE` funcionando. Passe `confirm: true`.
 
-```bash
-npm run build
-```
+**O `n8n_sync` não enviou nada** — `N8N_DRY_RUN` está em `true` (default). A resposta traz o payload
+que seria enviado.
 
-E confira se o cliente aponta para:
+**`MCP Server is not enabled for this tenant`** — o token não tem MCP liberado. O REST segue
+funcionando; só o `n8n_sync` para.
 
-```text
-/Users/artursousa/code/devero/datacrazy_mcpivis/dist/index.js
-```
+## Documentação
 
-### Operação destrutiva bloqueada
+| Arquivo | O quê |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | regras de contribuição — leia antes de mexer |
+| [`docs/agent/context.md`](docs/agent/context.md) | arquitetura, mapa das tools, pattern de bundling |
+| [`docs/agent/api-datacrazy.md`](docs/agent/api-datacrazy.md) | como a API se comporta de verdade |
+| [`docs/agent/decisions.md`](docs/agent/decisions.md) | por que está assim |
+| [`n8n/`](n8n/) | uso de cada endpoint MCP direto no n8n |
 
-Com `SAFE_MODE=true`, passe:
+## Segurança
 
-```json
-{ "confirm": true }
-```
+Nunca commitar `.env`, tokens, ou dumps do CRM com dados pessoais. O `.gitignore` cobre `.env`,
+`input/`, `reports/`, `data/`, `tmp/` e `.sync-state.json` — este último saiu do versionamento em
+2026-08-13 por conter IDs de leads reais.
 
-### n8n não enviou nada
-
-Confira `N8N_DRY_RUN`. O default é não enviar:
-
-```bash
-N8N_DRY_RUN=false
-```
-
-## Estado atual
-
-O projeto já builda com:
-
-```bash
-npm run build
-```
-
-O próximo foco deve ser manter a documentação e o processo claros, não reduzir artificialmente o número de arquivos TypeScript.
+Os defaults seguros (`SAFE_MODE=true`, `N8N_DRY_RUN=true`) não devem mudar sem pedido explícito.
