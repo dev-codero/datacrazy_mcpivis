@@ -14,7 +14,7 @@
 | `lead_list` devolve `[]` em silêncio quando `limit > 1000` | **Alta** | aberto | §2 · suporte §6 |
 | `lead_list` não devolve `count` — impossível detectar o primeiro | Média | aberto | §3 · suporte §7 |
 | IDs de pipeline/stage hardcoded quebram entre tenants | **Alta** | ✅ corrigido | §4 |
-| `check-env.ts` imprime 20 chars do token | Média | aberto (nosso) | §5 |
+| `check-env.ts` imprimia 20 chars do token | Média | ✅ corrigido | §5 |
 | `DataCrazyClient` quebrava em `204 No Content` — todo delete reportava erro | **Alta** | ✅ corrigido | §6 |
 | `McpClient` engolia erro de aplicação vindo no payload de sucesso | **Alta** | ✅ corrigido | suporte §1 |
 | Tipo errado em `tagIds` devolve 500 em vez de 400 | Média | aberto | suporte §2 |
@@ -26,6 +26,9 @@
 | `attendant_list` expõe `id` e `userId`; as escritas querem o `userId` | Baixa | aberto | suporte §11 |
 | `product_create` exige `id_sku` que o schema diz ser opcional | Média | aberto | suporte §12 |
 | Erro de validação vaza trace do Prisma no corpo | Média | aberto | suporte §13 |
+| `instance_get` devolve o token do WhatsApp em texto claro | **Alta** | aberto | suporte §14 |
+| `conversation_send_message` grava a mensagem e retorna erro | Média | aberto | suporte §15 |
+| `isActive` e `status` de instância divergem | Baixa | aberto | suporte §16 |
 | Tag/atendente/associação no lead funcionam nos dois sentidos | — | ✅ verificado | — |
 | `business_list_by_stage` pagina corretamente | — | ✅ verificado | — |
 | Importação de 600 leads preservou tudo | — | ✅ verificado | — |
@@ -332,6 +335,40 @@ Além de expor detalhe de implementação (Prisma, nome de método interno), o e
 contraditório: HTTP 400 com `statusCode: 500` no corpo.
 
 *Sugestão:* não devolver trace ao cliente e alinhar o status do envelope com o HTTP.
+
+### 14. `instance_get` devolve o token do WhatsApp em texto claro
+
+O payload inclui `config.token` — um access token vivo da Meta Cloud API — junto com
+`phoneNumberId` e `businessId`:
+
+```json
+{ "config": { "phoneNumberId": "…", "businessId": "…", "token": "EAAK…" }, "name": "…" }
+```
+
+Qualquer cliente MCP recebe credencial suficiente para enviar mensagem como aquele negócio. Num
+servidor MCP isso vai direto para o contexto do modelo do outro lado.
+
+*Sugestão:* omitir `config.token` da resposta, ou mascará-lo.
+
+### 15. `conversation_send_message` grava a mensagem e retorna erro
+
+Enviar por uma instância com `status: "DISCONNECTED"` responde `Internal server error`, mas **o
+registro da mensagem é criado** na conversa (com `status: "ERROR"`). O chamador não tem como
+distinguir "não enviou nada" de "gravou e não entregou".
+
+Pelo REST (`POST /api/v1/conversations/{id}/messages`) o mesmo caso responde 200 com
+`status: "PENDING"`, que vira `ERROR` depois — comportamento mais coerente.
+
+*Sugestão:* recusar o envio quando a instância não está conectada, ou responder 200 com o status
+real em vez de 500.
+
+### 16. `isActive` e `status` de instância dizem coisas diferentes
+
+Uma instância pode ter `isActive: true` e `status: "DISCONNECTED"` ao mesmo tempo. Quem filtrar por
+`isActive` — o nome sugere exatamente isso — escolhe uma instância que não entrega mensagem. O
+filtro `isActive` do `instance_list` tem o mesmo problema.
+
+*Sugestão:* permitir filtrar por `status`, ou documentar que `isActive` não implica operacional.
 
 ---
 

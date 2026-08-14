@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { DataCrazyClient } from "../src/client.js";
 import { makeConfig, mockFetch, jsonResponse } from "./helpers.js";
 
@@ -138,5 +138,93 @@ describe("DataCrazyClient", () => {
     const result = await client.get<{ data: Array<{ id: string }> }>("/api/v1/tags");
 
     expect(result.data[0].id).toBe("1");
+  });
+});
+
+/**
+ * O REST do DataCrazy limita por cota: 60 requisicoes por janela fixa de ~60s,
+ * global por token. Estourar em operacao de lote e o normal, nao a excecao —
+ * antes disso o lote simplesmente morria com "DataCrazy API error 429".
+ */
+describe("retry em 429", () => {
+  it("respeita o Retry-After e reenvia", async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = mockFetch((_call, index) =>
+        index === 0
+          ? new Response("rate limited", { status: 429, headers: { "retry-after": "2" } })
+          : jsonResponse({ ok: true }),
+      );
+      const client = new DataCrazyClient(makeConfig());
+
+      const promessa = client.get("/api/v1/tags");
+      await vi.advanceTimersByTimeAsync(2_100);
+      await expect(promessa).resolves.toMatchObject({ ok: true });
+      expect(calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("desiste depois de esgotar as tentativas e propaga o 429", async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = mockFetch(() => new Response("nope", { status: 429, headers: { "retry-after": "1" } }));
+      const client = new DataCrazyClient(makeConfig());
+
+      const promessa = client.get("/api/v1/tags");
+      const capturada = promessa.catch((e: Error) => e);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(String((await capturada as Error).message)).toMatch(/429/);
+      // 1 original + 3 retries
+      expect(calls).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("usa backoff quando nao ha Retry-After", async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = mockFetch((_call, index) =>
+        index === 0 ? new Response("", { status: 429 }) : jsonResponse({ ok: true }),
+      );
+      const client = new DataCrazyClient(makeConfig());
+
+      const promessa = client.get("/api/v1/tags");
+      await vi.advanceTimersByTimeAsync(5_100);
+      await expect(promessa).resolves.toMatchObject({ ok: true });
+      expect(calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("NAO faz retry de 4xx que nao seja 429", async () => {
+    const { calls } = mockFetch(() => new Response("nao existe", { status: 404 }));
+    const client = new DataCrazyClient(makeConfig());
+
+    await expect(client.get("/api/v1/leads/x")).rejects.toThrow(/404/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("faz retry tambem nos verbos de escrita", async () => {
+    vi.useFakeTimers();
+    try {
+      const { calls } = mockFetch((_call, index) =>
+        index === 0
+          ? new Response("", { status: 429, headers: { "retry-after": "1" } })
+          : new Response(null, { status: 204 }),
+      );
+      const client = new DataCrazyClient(makeConfig());
+
+      const promessa = client.delete("/api/v1/businesses/1");
+      await vi.advanceTimersByTimeAsync(1_100);
+      await expect(promessa).resolves.toBeUndefined();
+      expect(calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
