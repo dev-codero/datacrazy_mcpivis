@@ -255,7 +255,7 @@ de nome — manda o desenvolvedor investigar a coisa errada. Vale para MCP e RES
 A tag `DEV` tem **600 leads associados** e `leadsCount` retorna `0`, nos três caminhos de leitura
 (MCP com `search`, MCP sem `search`, e REST `/api/v1/tags`).
 
-### 4. `lead_list` perde registros ao paginar
+### 5. `lead_list` perde registros ao paginar
 
 Detalhado na §1 acima: 600 leads varridos com `skip`/`limit` de 100 devolvem 600 registros
 mas apenas **505 distintos** — 15,8% nunca aparecem, outros vêm repetidos. Acontece com qualquer
@@ -264,14 +264,14 @@ chave única.
 
 *Sugestão:* ordenar por uma chave única (ex: `id`) como desempate.
 
-### 5. `lead_list` com `limit > 1000` devolve lista vazia
+### 6. `lead_list` com `limit > 1000` devolve lista vazia
 
 Sem erro e sem clamp — indistinguível de "não há nenhum lead". Combinado com o #5, **não existe
 caminho confiável para ler mais de 1000 leads de um filtro**.
 
 *Sugestão:* clampar em 1000 e sinalizar, ou responder 400.
 
-### 6. `lead_list` não devolve `count`
+### 7. `lead_list` não devolve `count`
 
 `business_list_by_stage` devolve `count`, e é isso que permite validar uma varredura. O `lead_list`
 devolve só `{ data: [...] }`, então o chamador não tem como perceber que perdeu registros.
@@ -280,7 +280,7 @@ devolve só `{ data: [...] }`, então o chamador não tem como perceber que perd
 
 As tools de negócio cobrem `create`, `list_by_stage`, `list_by_attendant`, `move_stage`, `won`,
 `lose`, `update_attendant`, `add_product`, `remove_product`, `update_total` — nenhuma apaga. A
-exclusão só sai pelo REST. Ver a seção de capacidade em `context.md` para os números.
+exclusão só sai pelo REST.
 
 ### 9. `tag_create` do MCP não aceita cor
 
